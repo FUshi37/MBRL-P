@@ -8,7 +8,7 @@ class HexapodRobotCfg(BaseConfig):
         load_student_config = False
         mask_priv_obs = False
     class env:
-        num_envs = 1
+        num_envs = 100
 
         n_scan = 132
         n_priv = 3+3 +3

@@ -1,5 +1,6 @@
 
-from ...isaacgym.python import isaacgym
+# from ...isaacgym.python import isaacgym
+import isaacgym
 from gym.envs import *
 from gym import *
 

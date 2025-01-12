@@ -24,6 +24,8 @@ from hexapod_robot_config import HexapodRobotCfg
 from base_task import BaseTask
 from gym.utils.helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
 
+import cv2
+
 def quat_to_euler(quat):
     """
     Convert quaternion (w, x, y, z) to Euler angles (roll, pitch, yaw).
@@ -53,7 +55,11 @@ class Hexapod():
         self.sim_device = sim_device
         sim_device_type, self.sim_device_id = gymutil.parse_device_str(sim_device)
         self.headless = headless
+        self.debug_viz = True
         self._parse_cfg(self.cfg)
+        
+        self.resize_transform = torchvision.transforms.Resize((self.cfg.depth.resized[1], self.cfg.depth.resized[0]), 
+                                                              interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
         
         sim_params.use_gpu_pipeline = True
         if sim_device_type == 'cuda' :#and sim_params.use_gpu_pipeline:#
@@ -92,6 +98,9 @@ class Hexapod():
         self.enable_viewer_sync = True
         self.viewer = None
         
+        if not self.headless:
+            self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
+        
         self._init_buffers()
         self.global_counter = 0
         
@@ -103,6 +112,10 @@ class Hexapod():
                 self.viewer, gymapi.KEY_ESCAPE, "QUIT")
             self.gym.subscribe_viewer_keyboard_event(
                 self.viewer, gymapi.KEY_V, "toggle_viewer_sync")
+            
+        self.free_cam = False
+        self.lookat_id = 0
+        self.lookat_vec = torch.tensor([-0, 2, 1], requires_grad=False, device=self.device)
         
         self.post_physics_step()
     
@@ -159,8 +172,60 @@ class Hexapod():
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        
+        self.infos["delta_yaw_ok"] = self.delta_yaw < 0.6
+        if self.cfg.depth.use_camera and self.global_counter % self.cfg.depth.update_interval == 0:
+            self.infos["depth"] = self.depth_buffer[:, -2]  # have already selected last one
+        else:
+            self.infos["depth"] = None
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.infos
+    
+    def get_history_observations(self):
+        return self.obs_history_buf
+    
+    def normalize_depth_image(self, depth_image):
+        depth_image = depth_image * -1
+        depth_image = (depth_image - self.cfg.depth.near_clip) / (self.cfg.depth.far_clip - self.cfg.depth.near_clip)  - 0.5
+        return depth_image
+    
+    def process_depth_image(self, depth_image, env_id):
+        # These operations are replicated on the hardware
+        depth_image = self.crop_depth_image(depth_image)
+        depth_image += self.cfg.depth.dis_noise * 2 * (torch.rand(1)-0.5)[0]
+        depth_image = torch.clip(depth_image, -self.cfg.depth.far_clip, -self.cfg.depth.near_clip)
+        depth_image = self.resize_transform(depth_image[None, :]).squeeze()
+        depth_image = self.normalize_depth_image(depth_image)
+        return depth_image
+
+    def crop_depth_image(self, depth_image):
+        # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
+        return depth_image[:-2, 4:-4]
+
+    def update_depth_buffer(self):
+        if not self.cfg.depth.use_camera:
+            return
+
+        if self.global_counter % self.cfg.depth.update_interval != 0:
+            return
+        self.gym.step_graphics(self.sim) # required to render in headless mode
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
+
+        for i in range(self.num_envs):
+            depth_image_ = self.gym.get_camera_image_gpu_tensor(self.sim, 
+                                                                self.envs[i], 
+                                                                self.cam_handles[i],
+                                                                gymapi.IMAGE_DEPTH)
+            
+            depth_image = gymtorch.wrap_tensor(depth_image_)
+            depth_image = self.process_depth_image(depth_image, i)
+
+            init_flag = self.episode_length_buf <= 1
+            if init_flag[i]:
+                self.depth_buffer[i] = torch.stack([depth_image] * self.cfg.depth.buffer_len, dim=0)
+            else:
+                self.depth_buffer[i] = torch.cat([self.depth_buffer[i, 1:], depth_image.to(self.device).unsqueeze(0)], dim=0)
+
+        self.gym.end_access_image_tensors(self.sim)
     
     def post_physics_step(self):
         self.gym.refresh_actor_root_state_tensor(self.sim)
@@ -191,14 +256,25 @@ class Hexapod():
         self.cur_goals = self._gather_cur_goals()
         self.next_goals = self._gather_cur_goals(future=1)
         
+        self.update_depth_buffer()
+        
         self.get_observations()
         
         self.last_actions = self.actions
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_torques[:] = self.torques[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
-        # if self.viewer and self.enable_viewer_sync and self.debug_viz:
-        #     self._draw_debug_viz()
+        
+        if self.viewer and self.enable_viewer_sync and self.debug_viz:
+            self.gym.clear_lines(self.viewer)
+            # self._draw_height_samples()
+            # self._draw_goals()
+            # self._draw_feet()
+            if self.cfg.depth.use_camera:
+                window_name = "Depth Image"
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+                cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].cpu().numpy() + 0.5)
+                cv2.waitKey(1)
     
     def _update_goals(self):
         next_flag = self.reach_goal_timer > self.cfg.env.reach_goal_delay / self.dt
@@ -221,6 +297,8 @@ class Hexapod():
             
     def create_sim(self):
         self.up_axis_idx = 2 # 2 for z, 1 for y -> adapt gravity accordingly
+        if self.cfg.depth.use_camera:
+            self.graphics_device_id = self.sim_device_id  # required in headless mode
         self.sim = self.gym.create_sim(self.sim_device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         # terrain TODO
         self._create_ground_plane()
@@ -318,7 +396,14 @@ class Hexapod():
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
-        
+    
+    def set_camera(self, position, lookat):
+        """Set camera position and direction
+        """
+        cam_pos = gymapi.Vec3(position[0], position[1], position[2])
+        cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
+        self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
+    
     def _get_env_origins(self):
         self.custom_origins = False
         self.env_origins = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
@@ -505,20 +590,67 @@ class Hexapod():
         self.reset_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
         pass
     
+    def lookat(self, i):
+        look_at_pos = self.root_states[i, :3].clone()
+        cam_pos = look_at_pos + self.lookat_vec
+        self.set_camera(cam_pos, look_at_pos)
+    
     def render(self, sync_frame_time=True):
         if self.viewer:
+            # check for window closed
             if self.gym.query_viewer_has_closed(self.viewer):
                 sys.exit()
-            
-            # for evt in self.gym.query_viewer_action_events(self.viewer):
-            #     if evt.action == "QUIT" and evt.value > 0:
-            #         sys.exit()
-            #     elif evt.action == "toggle_viewer_sync" and evt.value > 0:
-            #         self.enable_viewer_sync = not self.enable_viewer_sync
+            if not self.free_cam:
+                self.lookat(self.lookat_id)
+            # check for keyboard events
+            for evt in self.gym.query_viewer_action_events(self.viewer):
+                if evt.action == "QUIT" and evt.value > 0:
+                    sys.exit()
+                elif evt.action == "toggle_viewer_sync" and evt.value > 0:
+                    self.enable_viewer_sync = not self.enable_viewer_sync
+                
+                if not self.free_cam:
+                    for i in range(9):
+                        if evt.action == "lookat" + str(i) and evt.value > 0:
+                            self.lookat(i)
+                            self.lookat_id = i
+                    if evt.action == "prev_id" and evt.value > 0:
+                        self.lookat_id  = (self.lookat_id-1) % self.num_envs
+                        self.lookat(self.lookat_id)
+                    if evt.action == "next_id" and evt.value > 0:
+                        self.lookat_id  = (self.lookat_id+1) % self.num_envs
+                        self.lookat(self.lookat_id)
+                    if evt.action == "vx_plus" and evt.value > 0:
+                        self.commands[self.lookat_id, 0] += 0.2
+                    if evt.action == "vx_minus" and evt.value > 0:
+                        self.commands[self.lookat_id, 0] -= 0.2
+                    if evt.action == "left_turn" and evt.value > 0:
+                        self.commands[self.lookat_id, 3] += 0.5
+                    if evt.action == "right_turn" and evt.value > 0:
+                        self.commands[self.lookat_id, 3] -= 0.5
+                if evt.action == "free_cam" and evt.value > 0:
+                    self.free_cam = not self.free_cam
+                    if self.free_cam:
+                        self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
+                
+                if evt.action == "pause" and evt.value > 0:
+                    self.pause = True
+                    while self.pause:
+                        time.sleep(0.1)
+                        self.gym.draw_viewer(self.viewer, self.sim, True)
+                        for evt in self.gym.query_viewer_action_events(self.viewer):
+                            if evt.action == "pause" and evt.value > 0:
+                                self.pause = False
+                        if self.gym.query_viewer_has_closed(self.viewer):
+                            sys.exit()
 
-            if self.device!= 'cpu':
+                        
+                
+            # fetch results
+            if self.device != 'cpu':
                 self.gym.fetch_results(self.sim, True)
-            
+
+            self.gym.poll_viewer_events(self.viewer)
             # step graphics
             if self.enable_viewer_sync:
                 self.gym.step_graphics(self.sim)
@@ -527,6 +659,13 @@ class Hexapod():
                     self.gym.sync_frame_time(self.sim)
             else:
                 self.gym.poll_viewer_events(self.viewer)
+            
+            if not self.free_cam:
+                p = self.gym.get_viewer_camera_transform(self.viewer, None).p
+                cam_trans = torch.tensor([p.x, p.y, p.z], requires_grad=False, device=self.device)
+                look_at_pos = self.root_states[self.lookat_id, :3].clone()
+                self.lookat_vec = cam_trans - look_at_pos
+    
 
     def _compute_torques(self, actions):
         # TODO
@@ -660,6 +799,12 @@ class Hexapod():
             self.p_gains[i] = self.cfg.control.stiffness['joint']
             self.d_gains[i] = self.cfg.control.damping['joint']
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
+        
+        if self.cfg.depth.use_camera:
+            self.depth_buffer = torch.zeros(self.num_envs,  
+                                            self.cfg.depth.buffer_len, 
+                                            self.cfg.depth.resized[1], 
+                                            self.cfg.depth.resized[0]).to(self.device)
     
     def _create_ground_plane(self):
         plane_params = gymapi.PlaneParams()
@@ -760,6 +905,55 @@ class Hexapod():
             points[i, :, 1] = grid_y.flatten() + xy_noise[:, 1]
         return points
     
+    # def _draw_goals(self):
+    #     sphere_geom = gymutil.WireframeSphereGeometry(0.1, 32, 32, None, color=(1, 0, 0))
+    #     sphere_geom_cur = gymutil.WireframeSphereGeometry(0.1, 32, 32, None, color=(0, 0, 1))
+    #     sphere_geom_reached = gymutil.WireframeSphereGeometry(self.cfg.env.next_goal_threshold, 32, 32, None, color=(0, 1, 0))
+    #     goals = self.terrain_goals[self.terrain_levels[self.lookat_id], self.terrain_types[self.lookat_id]].cpu().numpy()
+    #     for i, goal in enumerate(goals):
+    #         goal_xy = goal[:2] + self.terrain.cfg.border_size
+    #         pts = (goal_xy/self.terrain.cfg.horizontal_scale).astype(int)
+    #         goal_z = self.height_samples[pts[0], pts[1]].cpu().item() * self.terrain.cfg.vertical_scale
+    #         pose = gymapi.Transform(gymapi.Vec3(goal[0], goal[1], goal_z), r=None)
+    #         if i == self.cur_goal_idx[self.lookat_id].cpu().item():
+    #             gymutil.draw_lines(sphere_geom_cur, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+    #             if self.reached_goal_ids[self.lookat_id]:
+    #                 gymutil.draw_lines(sphere_geom_reached, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+    #         else:
+    #             gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+        
+    #     if not self.cfg.depth.use_camera:
+    #         sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(1, 0.35, 0.25))
+    #         pose_robot = self.root_states[self.lookat_id, :3].cpu().numpy()
+    #         for i in range(5):
+    #             norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
+    #             target_vec_norm = self.target_pos_rel / (norm + 1e-5)
+    #             pose_arrow = pose_robot[:2] + 0.1*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
+    #             pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
+    #             gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+            
+    #         sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(0, 1, 0.5))
+    #         for i in range(5):
+    #             norm = torch.norm(self.next_target_pos_rel, dim=-1, keepdim=True)
+    #             target_vec_norm = self.next_target_pos_rel / (norm + 1e-5)
+    #             pose_arrow = pose_robot[:2] + 0.2*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
+    #             pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
+    #             gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+        
+    # def _draw_feet(self):
+    #     if hasattr(self, 'feet_at_edge'):
+    #         non_edge_geom = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(0, 1, 0))
+    #         edge_geom = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(1, 0, 0))
+
+    #         feet_pos = self.rigid_body_states[:, self.feet_indices, :3]
+    #         for i in range(4):
+    #             pose = gymapi.Transform(gymapi.Vec3(feet_pos[self.lookat_id, i, 0], feet_pos[self.lookat_id, i, 1], feet_pos[self.lookat_id, i, 2]), r=None)
+    #             if self.feet_at_edge[self.lookat_id, i]:
+    #                 gymutil.draw_lines(edge_geom, self.gym, self.viewer, self.envs[i], pose)
+    #             else:
+    #                 gymutil.draw_lines(non_edge_geom, self.gym, self.viewer, self.envs[i], pose)
+    
+    
 if __name__ == "__main__":
     cfg = HexapodRobotCfg()
     sim_params = gymapi.SimParams()
@@ -770,6 +964,6 @@ if __name__ == "__main__":
     sim_device = 'cuda'
     headless = False
     hexapod = Hexapod(cfg, sim_params, physics_engine, sim_device, headless)
-    actions = torch.zeros(1, 18, device=hexapod.device, requires_grad=False)
+    actions = torch.zeros(100, 18, device=hexapod.device, requires_grad=False)
     while True:
         hexapod.step(actions)
