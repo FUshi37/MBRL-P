@@ -1,0 +1,63 @@
+1. 改完gym测试一下
+2. 先不要复杂地形
+3. 确定obs pri_obs维度
+4. 确定视觉obs情况
+5. 去掉amp相关的所有代码
+6. 检查sensor，足端力sensor
+7. 高程图相关代码，forward_height和height的区别
+8. 修改奖励函数
+
+base height 和 measure_heights
+
+9. wmp runner cfg修改，去掉amp
+
+10. contact力和indices计算是否有误 -> feet air time为什么是0
+11. value function loss计算值为什么很小 为什么这么快收敛到0
+12. 如何不加cpg实现强化学习的光滑连续控制 -> 是否要加cpg
+
+13. self collision设置
+14. check termination会不会把y方向速度小于0的时候reset掉 done
+15. x y 方向速度分开奖励函数 done
+16. feet air time为什么是0 done
+17. base height奖励 done
+
+
+18. command 是不是 observations[:, self.privileged_dim + 6:self.privileged_dim + 9] done
+19. target_linear_vel 是不是 aug_critic_obs_batch[:,
+                                    self.actor_critic.privileged_dim - 3: self.actor_critic.privileged_dim] done
+20. 确定wm_feature和history
+21. wandb log加视频画面   
+22.         self.trajectory_history = torch.zeros(size=(self.env.num_envs, self.history_length, self.env.num_obs -
+                                                    self.env.privileged_dim - self.env.height_dim - 3),
+                                              device=self.device) done
+23.         obs_without_command = torch.concat((obs[:, self.env.privileged_dim:self.env.privileged_dim + 6],
+                                            obs[:, self.env.privileged_dim + 9:self.env.num_obs-self.env.height_dim]), dim=1) done
+24. wm_obs确认 & obs_scale确定
+25. 去掉视觉训练 能不能收敛
+26. 改变碰撞体                              half done
+27. min_std in wmp_runner 
+28. 平地训练是187维度的height map全是0
+
+29. _reward_cheat修改，因为机器人朝向y轴 done(没问题)
+30. 训练直走先去掉height和depth camera done
+31. dof_error要不要 done
+
+32. wandb log加视频画面
+33. world model没有视觉的时候更新会不会有问题
+34. p d系数和action_scale可以再调一下，让它软一些，给力控的空间
+
+35. pd有些软，机器人后腿拖地行走
+36. 如何对后腿拖地设计惩罚奖励函数
+37. 检验一下pd系数，绘制曲线
+38. rew_clearance再调大一点 done
+
+39. foot slippery done 但是效果一般
+40. rand给基体力，力的大小 done
+41. pd不够硬
+
+42. check termination加了对height的检测，不能低于0.55 试了下效果不太行，太容易check termination是true了，再看看是不是有什么问题
+43. 加了一个拖地行走dragging惩罚项 效果还行
+44. pd调大 done 效果还行
+45. 更改urdf关节角限制 done 效果很好
+
+46. 23th实现了固定速度直走平地，没有各种limits奖励项，角度跟的不是很好（系数2.0）

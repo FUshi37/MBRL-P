@@ -19,16 +19,21 @@ from torch import Tensor
 from typing import Tuple, Dict
 
 from gym import GYM_ENVS_DIR, GYM_ROOT_DIR
-from hexapod_robot_config import HexapodRobotCfg
+from .hexapod_robot_config import HexapodRobotCfg
 # from gym.utils.terrain import Terrain
-from base_task import BaseTask
+from .base_task import BaseTask
 from gym.utils.helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
+# MBRL
+# import observation_buffer
+from gym.envs import observation_buffer
+# MBRL
 
 import cv2
+import json
 
 def quat_to_euler(quat):
     """
-    Convert quaternion (w, x, y, z) to Euler angles (roll, pitch, yaw).
+    Convert quaternion (x, y, z, w) to Euler angles (roll, pitch, yaw).
     """
     x = quat[:,0]; y = quat[:,1]; z = quat[:,2]; w = quat[:,3]
     t0 = +2.0 * (w * x + y * z)
@@ -69,17 +74,29 @@ class Hexapod():
 
         self.graphics_device_id = self.sim_device_id
         if self.headless == True:
-            self.graphics_device_id = None
+            self.graphics_device_id = -1
         
         self.num_envs = cfg.env.num_envs
         self.num_actions = cfg.env.num_actions
         self.num_obs = cfg.env.num_observations
         self.num_privileged_obs = cfg.env.num_privileged_obs
+        print("num_obs: ", self.num_obs)
+        print("num_priobs: ", self.num_privileged_obs)
         
-        # # optimization flags for pytorch JIT
-        # torch._C._jit_set_profiling_mode(False)
-        # torch._C._jit_set_profiling_executor(False)
+        # optimization flags for pytorch JIT
+        torch._C._jit_set_profiling_mode(False)
+        torch._C._jit_set_profiling_executor(False)
+        # MBRL
+        self.include_history_steps = cfg.env.include_history_steps
+        # self.height_dim = cfg.env.height_dim
+        self.privileged_dim = cfg.env.privileged_dim
         
+        # allocate buffers
+        if cfg.env.include_history_steps is not None:
+            self.obs_buf_history = observation_buffer.ObservationBuffer(
+                self.num_envs, self.num_obs,
+                self.include_history_steps, self.device)
+        # MBRL
         self.obs_buf = torch.zeros(self.num_envs, self.num_obs, device=self.device, dtype=torch.float)
         self.rew_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
@@ -102,7 +119,9 @@ class Hexapod():
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         
         self._init_buffers()
+        self._prepare_reward_function()
         self.global_counter = 0
+        self.total_env_steps_counter = 0
         
         if headless == False:
             # subscribe to keyboard shortcuts
@@ -116,60 +135,99 @@ class Hexapod():
         self.free_cam = False
         self.lookat_id = 0
         self.lookat_vec = torch.tensor([-0, 2, 1], requires_grad=False, device=self.device)
+        with open("./motorcommand.txt", "r") as f:    
+            self.motorcommand = json.load(f)
+            
+        # # 设置参数 正弦测试
+        # amplitude = 0.5           # 振幅
+        # frequency = 2*np.pi           # 频率 (Hz)
+        # sampling_rate = 1000    # 采样率 (samples per second)
+        # duration = 1            # 持续时间 (秒)
+        # # 生成时间序列
+        # t = np.linspace(0, duration, int(sampling_rate * duration), endpoint=False)
+        # # 生成正弦信号，并确保它是 [1, 18] 形状的列表
+        # signal = [[amplitude * np.sin(2 * np.pi * frequency * ti) for _ in range(18)] for ti in t]
+        # self.motorcommand = signal
+        
+        self.motorcommand_index = -1
+        
+        self.ema_decay = 0.9
+        self.velocity_ema = torch.zeros(self.num_envs, 2, device=self.device, dtype=torch.float)
+        self.velocity_ema_list = []
+        self.EMA_LEN = 50
         
         self.post_physics_step()
     
-    def step(self, action):
+    def step(self, actions):
+        # base task legged gym
         clip_actions = self.cfg.normalization.clip_actions
         if clip_actions:
-            self.actions = torch.clip(action, -clip_actions, clip_actions).to(device=self.device)
+            self.actions = torch.clip(actions, -clip_actions, clip_actions).to(device=self.device)
+        # print("actions: ", self.actions)
         self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
         self.global_counter += 1
+        
+        # # 测试
+        # if self.motorcommand_index == len(self.motorcommand) - 1:
+        #     self.motorcommand_index = -1
+        # if self.motorcommand_index < len(self.motorcommand) - 1:
+        #     self.motorcommand_index = self.motorcommand_index + 1
+        # self.actions = self.motorcommand[self.motorcommand_index]
+        # # print("actions len: ", len(self.actions))
+        # # self.actions[3:18] = [0] * 15 
+        # # self.actions[1:18] = [0] * 17
+        # # print("actions: ", self.actions)
+        # self.actions = torch.tensor(self.actions, dtype=torch.float32).to(device=self.device)
+        
+        # self.actions.view(1, 18)
+        # self.actions = self.actions.repeat(1, 1)
+        
+        # print("actions shape: ", self.actions.shape)
+        
+        # # extreme parkour
+        # actions.to(self.device)
+        # self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
+        # if self.cfg.domain_rand.action_delay:
+        #     if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
+        #         if len(self.cfg.domain_rand.action_curr_step) != 0:
+        #             self.delay = torch.tensor(self.cfg.domain_rand.action_curr_step.pop(0), device=self.device, dtype=torch.float)
+        #     if self.viewer:
+        #         self.delay = torch.tensor(self.cfg.domain_rand.action_delay_view, device=self.device, dtype=torch.float)
+        #     indices = -self.delay -1
+        #     actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
+
+        # self.global_counter += 1
+        # self.total_env_steps_counter += 1
+        # clip_actions = self.cfg.normalization.clip_actions / self.cfg.control.action_scale
+        # self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         
         # TODO: step simulation
         self.render()
         for _ in range(self.cfg.control.action_repeat):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
+            # print("torques: ", self.torques)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
             self.gym.simulate(self.sim)
             if self.device != 'cpu':
                 self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
         
-        self.post_physics_step()
-        # self.gym.refresh_actor_root_state_tensor(self.sim)
-        # self.gym.refresh_net_contact_force_tensor(self.sim)
-        # self.gym.refresh_rigid_body_state_tensor(self.sim)
-        # self.gym.refresh_force_sensor_tensor(self.sim)
-        # self.episode_length_buf += 1
-        # self.common_step_counter += 1
+        # self.post_physics_step
+        # MBRL
+        reset_env_ids, terminal_amp_states = self.post_physics_step()
+        # MBRL
         
-        # self.base_quat[:] = self.root_states[:, 3:7]
-        # self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
-        # self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-        # self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
-        
-        # self.roll, self.pitch, self.yaw = quat_to_euler(self.base_quat)
-        
-        # contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
-        # self.contact_filt = torch.logical_or(contact, self.last_contacts) 
-        # self.last_contacts = contact
-
-        # self.termination()
-        # self.calculate_reward()
-        # env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
-        # self.reset_idx(env_ids)
-        # self.get_observations()
-        
-        # self.last_actions = self.actions
-        # self.last_dof_vel[:] = self.dof_vel[:]
-        # self.last_torques[:] = self.torques[:]
-        # self.last_root_vel[:] = self.root_states[:, 7:13]
-        # # if self.viewer and self.enable_viewer_sync and self.debug_viz:
-        # #     self._draw_debug_viz()
         
         clip_obs = self.cfg.normalization.clip_observations
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
+        # MBRL
+        if self.cfg.env.include_history_steps is not None:
+            self.obs_buf_history.reset(reset_env_ids, self.obs_buf[reset_env_ids])
+            self.obs_buf_history.insert(self.obs_buf)
+            policy_obs = self.obs_buf_history.get_obs_vec(np.arange(self.include_history_steps))
+        else:
+            policy_obs = self.obs_buf
+        # MBRL
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         self.infos["delta_yaw_ok"] = self.delta_yaw < 0.6
@@ -241,6 +299,10 @@ class Hexapod():
         self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         
         self.roll, self.pitch, self.yaw = quat_to_euler(self.base_quat)
+        self.yaw += math.pi/2
+        # 使用torch.where处理所有环境的角度值
+        self.yaw = torch.where(self.yaw > math.pi, self.yaw - 2 * math.pi, self.yaw)
+        self.yaw = torch.where(self.yaw < -math.pi, self.yaw + 2 * math.pi, self.yaw)
         
         contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
         self.contact_filt = torch.logical_or(contact, self.last_contacts) 
@@ -249,8 +311,20 @@ class Hexapod():
         self._update_goals()
         
         self.termination()
+        current_vel_xy = self.root_states[:, 7:9].clone()
+        # self.velocity_ema = self.ema_decay * self.velocity_ema + (1 - self.ema_decay) * current_vel_xy
+        if len(self.velocity_ema_list) < self.EMA_LEN:
+            self.velocity_ema_list.append(current_vel_xy)
+        else:
+            self.velocity_ema_list.pop(0)
+            self.velocity_ema_list.append(current_vel_xy)
+        self.velocity_ema = torch.stack(self.velocity_ema_list, dim=0).mean(dim=0)
+        
         self.calculate_reward()
+        # print("reward: ", self.rew_buf)
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        terminal_amp_states = self.get_amp_observations()[env_ids]
+        # print("env_ids: ", env_ids)
         self.reset_idx(env_ids)
         
         self.cur_goals = self._gather_cur_goals()
@@ -258,7 +332,7 @@ class Hexapod():
         
         self.update_depth_buffer()
         
-        self.get_observations()
+        self.compute_observations()
         
         self.last_actions = self.actions
         self.last_dof_vel[:] = self.dof_vel[:]
@@ -275,10 +349,12 @@ class Hexapod():
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].cpu().numpy() + 0.5)
                 cv2.waitKey(1)
+                
+        return env_ids, terminal_amp_states
     
     def _update_goals(self):
         next_flag = self.reach_goal_timer > self.cfg.env.reach_goal_delay / self.dt
-        self.cur_goal_idx[next_flag] += 1
+        # self.cur_goal_idx[next_flag] += 1
         self.reach_goal_timer[next_flag] = 0
 
         self.reached_goal_ids = torch.norm(self.root_states[:, :2] - self.cur_goals[:, :2], dim=1) < self.cfg.env.next_goal_threshold
@@ -304,6 +380,31 @@ class Hexapod():
         self._create_ground_plane()
         self._create_envs()
     
+    def attach_camera(self, i, env_handle, actor_handle):
+        if self.cfg.depth.use_camera:
+            config = self.cfg.depth
+            camera_props = gymapi.CameraProperties()
+            camera_props.width = self.cfg.depth.original[0]
+            camera_props.height = self.cfg.depth.original[1]
+            camera_props.enable_tensors = True
+            camera_horizontal_fov = self.cfg.depth.horizontal_fov 
+            camera_props.horizontal_fov = camera_horizontal_fov
+
+            camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
+            self.cam_handles.append(camera_handle)
+            
+            local_transform = gymapi.Transform()
+            
+            camera_position = np.copy(config.position)
+            camera_angle = np.random.uniform(config.angle[0], config.angle[1])
+            
+            local_transform.p = gymapi.Vec3(*camera_position)
+            local_transform.r = gymapi.Quat.from_euler_zyx(0, np.radians(camera_angle), 0)
+            root_handle = self.gym.get_actor_root_rigid_body_handle(env_handle, actor_handle)
+            
+            self.gym.attach_camera_to_body(camera_handle, env_handle, root_handle, local_transform, gymapi.FOLLOW_TRANSFORM)
+
+    
     def _create_envs(self):
         
         
@@ -311,19 +412,19 @@ class Hexapod():
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
         asset_options = gymapi.AssetOptions()
-        # asset_options.default_dof_drive_mode = self.cfg.asset.default_dof_drive_mode
-        # asset_options.collapse_fixed_joints = self.cfg.asset.collapse_fixed_joints
-        # asset_options.replace_cylinder_with_capsule = self.cfg.asset.replace_cylinder_with_capsule
-        # asset_options.flip_visual_attachments = self.cfg.asset.flip_visual_attachments
-        # asset_options.fix_base_link = self.cfg.asset.fix_base_link
-        # asset_options.density = self.cfg.asset.density
-        # asset_options.angular_damping = self.cfg.asset.angular_damping
-        # asset_options.linear_damping = self.cfg.asset.linear_damping
-        # asset_options.max_angular_velocity = self.cfg.asset.max_angular_velocity
-        # asset_options.max_linear_velocity = self.cfg.asset.max_linear_velocity
-        # asset_options.armature = self.cfg.asset.armature
-        # asset_options.thickness = self.cfg.asset.thickness
-        # asset_options.disable_gravity = self.cfg.asset.disable_gravity
+        asset_options.default_dof_drive_mode = self.cfg.asset.default_dof_drive_mode
+        asset_options.collapse_fixed_joints = self.cfg.asset.collapse_fixed_joints
+        asset_options.replace_cylinder_with_capsule = self.cfg.asset.replace_cylinder_with_capsule
+        asset_options.flip_visual_attachments = self.cfg.asset.flip_visual_attachments
+        asset_options.fix_base_link = self.cfg.asset.fix_base_link
+        asset_options.density = self.cfg.asset.density
+        asset_options.angular_damping = self.cfg.asset.angular_damping
+        asset_options.linear_damping = self.cfg.asset.linear_damping
+        asset_options.max_angular_velocity = self.cfg.asset.max_angular_velocity
+        asset_options.max_linear_velocity = self.cfg.asset.max_linear_velocity
+        asset_options.armature = self.cfg.asset.armature
+        asset_options.thickness = self.cfg.asset.thickness
+        asset_options.disable_gravity = self.cfg.asset.disable_gravity
         
         robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         self.num_dof = self.gym.get_asset_dof_count(robot_asset)
@@ -360,6 +461,8 @@ class Hexapod():
         env_upper = gymapi.Vec3(0., 0., 0.)
         self.actor_handles = []
         self.envs = []
+        self.cam_handles = []
+        self.cam_tensors = []
         self.mass_params_tensor = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
         
         for i in range(self.num_envs):
@@ -381,6 +484,8 @@ class Hexapod():
             # self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
+            
+            self.attach_camera(i, env_handle, actor_handle)
 
         if self.cfg.domain_rand.randomize_friction:
             self.friction_coeffs_tensor = self.friction_coeffs.to(self.device).to(torch.float).squeeze(-1)
@@ -414,7 +519,7 @@ class Hexapod():
         spacing = self.cfg.env.env_spacing
         self.env_origins[:, 0] = spacing * xx.flatten()[:self.num_envs]
         self.env_origins[:, 1] = spacing * yy.flatten()[:self.num_envs]
-        self.env_origins[:, 2] = 0.2      
+        self.env_origins[:, 2] = 0.0     
         # self.env_origins = torch.zeros((self.num_envs, 3), device=self.device)
         # for i in range(self.num_envs):
         #     pos = self.gym.get_actor_root_state(self.sim, self.actor_handles[i])[0]
@@ -460,6 +565,12 @@ class Hexapod():
     
     def reset(self):
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
+        # MBRL
+        if self.cfg.env.include_history_steps is not None:
+            self.obs_buf_history.reset(
+                torch.arange(self.num_envs, device=self.device),
+                self.obs_buf[torch.arange(self.num_envs, device=self.device)])
+        # MBRL
         obs, privileged_obs, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
         return obs, privileged_obs
 
@@ -525,69 +636,205 @@ class Hexapod():
                                                      gymtorch.unwrap_tensor(self.root_states),
                                                      gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
     
-    def calculate_reward(self):
-        self.rew_buf = 0.
-        
-    def get_observations(self):
-        imu_obs = torch.stack((self.roll, self.pitch), dim=1)
-        if self.global_counter % 5 == 0:
-            self.delta_yaw = self.target_yaw - self.yaw
-            self.delta_next_yaw = self.next_target_yaw - self.yaw
-        obs_buf = torch.cat((#skill_vector, 
-                            self.base_ang_vel  * self.obs_scales.ang_vel,   #[1,3]
-                            imu_obs,    #[1,2]
-                            0*self.delta_yaw[:, None], 
-                            self.delta_yaw[:, None],
-                            self.delta_next_yaw[:, None],
-                            0*self.commands[:, 0:2], 
-                            self.commands[:, 0:1],  #[1,1]
-                            # (self.env_class != 17).float()[:, None], 
-                            # (self.env_class == 17).float()[:, None],
-                            # self.reindex((self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos),
-                            # self.reindex(self.dof_vel * self.obs_scales.dof_vel),
-                            # self.reindex(self.action_history_buf[:, -1]),
-                            # self.reindex_feet(self.contact_filt.float()-0.5),
-                            ),dim=-1)
-        priv_explicit = torch.cat((self.base_lin_vel * self.obs_scales.lin_vel,
-                                   0 * self.base_lin_vel,
-                                   0 * self.base_lin_vel), dim=-1)
-        priv_latent = torch.cat((
-            self.mass_params_tensor,
-            self.friction_coeffs_tensor,
-            self.motor_strength[0] - 1, 
-            self.motor_strength[1] - 1
-        ), dim=-1)
-        if self.cfg.terrain.measure_heights:
-            heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.3 - self.measured_heights, -1, 1.)
-            self.obs_buf = torch.cat([obs_buf, heights, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
-        else:
-            self.obs_buf = torch.cat([obs_buf, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
-        obs_buf[:, 6:8] = 0  # mask yaw in proprioceptive history
-        self.obs_history_buf = torch.where(
-            (self.episode_length_buf <= 1)[:, None, None], 
-            torch.stack([obs_buf] * self.cfg.env.history_len, dim=1),
-            torch.cat([
-                self.obs_history_buf[:, 1:],
-                obs_buf.unsqueeze(1)
-            ], dim=1)
-        )
-        # TODO: contact force
-        # self.contact_buf = torch.where(
-        #     (self.episode_length_buf <= 1)[:, None, None], 
-        #     torch.stack([self.contact_filt.float()] * self.cfg.env.contact_buf_len, dim=1),
-        #     torch.cat([
-        #         self.contact_buf[:, 1:],
-        #         self.contact_filt.float().unsqueeze(1)
-        #     ], dim=1)
-        # )              
-           
-        # pass
+    def _prepare_reward_function(self):
+        # remove zero scales + multiply non-zero ones by dt
+        for key in list(self.reward_scales.keys()):
+            scale = self.reward_scales[key]
+            if scale==0:
+                self.reward_scales.pop(key) 
+            else:
+                self.reward_scales[key] *= self.dt
+        # prepare list of functions
+        self.reward_functions = []
+        self.reward_names = []
+        for name, scale in self.reward_scales.items():
+            if name=="termination":
+                continue
+            self.reward_names.append(name)
+            name = '_reward_' + name
+            self.reward_functions.append(getattr(self, name))
+
+        # reward episode sums
+        self.episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+                             for name in self.reward_scales.keys()}
     
+    def calculate_reward(self):
+        self.rew_buf[:] = 0.
+        for i in range(len(self.reward_functions)):
+            name = self.reward_names[i]
+            rew = self.reward_functions[i]() * self.reward_scales[name]
+            self.rew_buf += rew
+            self.episode_sums[name] += rew
+        if self.cfg.rewards.only_positive_rewards:
+            self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
+        
+        # add termination reward after clipping
+        if "termination" in self.reward_scales:
+            rew = self._reward_termination() * self.reward_scales["termination"]
+            self.rew_buf += rew
+            self.episode_sums["termination"] += rew
+            
+    def compute_observations(self):
+        USE_MBRL = False
+        if USE_MBRL == True:
+            self.privileged_obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
+                                        self.base_ang_vel  * self.obs_scales.ang_vel,
+                                        self.projected_gravity,
+                                        self.commands[:, :3] * self.commands_scale,
+                                        (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
+                                        self.dof_vel * self.obs_scales.dof_vel,
+                                        self.actions
+                                        ),dim=-1)
+
+            # if (self.cfg.env.privileged_obs):
+                # # add perceptive inputs if not blind
+                # if self.cfg.terrain.measure_heights:
+                #     heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - self.cfg.normalization.base_height - self.measured_heights, -1, 1.) * self.obs_scales.height_measurements
+                #     self.privileged_obs_buf = torch.cat((self.privileged_obs_buf, heights), dim=-1)
+
+                # if self.cfg.domain_rand.randomize_friction:
+                #     self.privileged_obs_buf= torch.cat((self.randomized_frictions, self.privileged_obs_buf), dim=-1)
+
+                # if self.cfg.domain_rand.randomize_restitution:
+                #     self.privileged_obs_buf = torch.cat((self.randomized_restitutions, self.privileged_obs_buf), dim=-1)
+
+                # if (self.cfg.domain_rand.randomize_base_mass):
+                #     self.privileged_obs_buf = torch.cat((self.randomized_added_masses ,self.privileged_obs_buf), dim=-1)
+
+                # if (self.cfg.domain_rand.randomize_com_pos):
+                #     self.privileged_obs_buf = torch.cat((self.randomized_com_pos * self.obs_scales.com_pos ,self.privileged_obs_buf), dim=-1)
+
+                # if (self.cfg.domain_rand.randomize_gains):
+                #     self.privileged_obs_buf = torch.cat(((self.randomized_p_gains / self.p_gains - 1) * self.obs_scales.pd_gains ,self.privileged_obs_buf), dim=-1)
+                #     self.privileged_obs_buf = torch.cat(((self.randomized_d_gains / self.d_gains - 1) * self.obs_scales.pd_gains, self.privileged_obs_buf),
+                #                                         dim=-1)
+
+                # contact_force = self.sensor_forces.flatten(1) * self.obs_scales.contact_force
+                # self.privileged_obs_buf = torch.cat((contact_force, self.privileged_obs_buf), dim=-1)
+                # contact_flag = torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1
+                # self.privileged_obs_buf = torch.cat((contact_flag, self.privileged_obs_buf), dim=-1)
+
+            # # add noise if needed
+            # if self.add_noise:
+            #     self.privileged_obs_buf += (2 * torch.rand_like(self.privileged_obs_buf) - 1) * self.noise_scale_vec
+
+
+            # # Remove velocity observations from policy observation.
+            # if self.num_obs == self.num_privileged_obs - 6:
+            #     self.obs_buf = self.privileged_obs_buf[:, 6:]
+            # elif self.num_obs == self.num_privileged_obs - 3:
+            #     self.obs_buf = self.privileged_obs_buf[:, 3:]
+            # else:
+            #     self.obs_buf = torch.clone(self.privileged_obs_buf)
+            self.obs_buf = torch.clone(self.privileged_obs_buf)
+        else:
+            imu_obs = torch.stack((self.roll, self.pitch), dim=1)
+            if self.global_counter % 5 == 0:
+                self.delta_yaw = self.target_yaw - self.yaw
+                self.delta_next_yaw = self.next_target_yaw - self.yaw
+            obs_buf = torch.cat((#skill_vector, 
+                                self.base_ang_vel  * self.obs_scales.ang_vel,   #[1,3]
+                                imu_obs,    #[1,2]
+                                0*self.delta_yaw[:, None], 
+                                self.delta_yaw[:, None],
+                                self.delta_next_yaw[:, None],
+                                0*self.commands[:, 0:2], 
+                                self.commands[:, 0:1],  #[1,1]
+                                # (self.env_class != 17).float()[:, None], 
+                                # (self.env_class == 17).float()[:, None],
+                                # self.reindex((self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos),
+                                # self.reindex(self.dof_vel * self.obs_scales.dof_vel),
+                                # self.reindex(self.action_history_buf[:, -1]),
+                                # self.reindex_feet(self.contact_filt.float()-0.5),
+                                (self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos,
+                                (self.dof_vel * self.obs_scales.dof_vel),
+                                (self.action_history_buf[:, -1]),
+                                (self.contact_filt.float()-0.5),
+                                ),dim=-1)
+            priv_explicit = torch.cat((self.base_lin_vel * self.obs_scales.lin_vel,
+                                    0 * self.base_lin_vel,
+                                    0 * self.base_lin_vel), dim=-1)
+            priv_latent = torch.cat((
+                self.mass_params_tensor,
+                self.friction_coeffs_tensor,
+                self.motor_strength[0] - 1, 
+                self.motor_strength[1] - 1
+            ), dim=-1)
+            if self.cfg.terrain.measure_heights:
+                heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.3 - self.measured_heights, -1, 1.)
+                self.obs_buf = torch.cat([obs_buf, heights, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            else:
+                self.obs_buf = torch.cat([obs_buf, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            obs_buf[:, 6:8] = 0  # mask yaw in proprioceptive history
+            self.obs_history_buf = torch.where(
+                (self.episode_length_buf <= 1)[:, None, None], 
+                torch.stack([obs_buf] * self.cfg.env.history_len, dim=1),
+                torch.cat([
+                    self.obs_history_buf[:, 1:],
+                    obs_buf.unsqueeze(1)
+                ], dim=1)
+            )
+            # TODO: contact force
+            # self.contact_buf = torch.where(
+            #     (self.episode_length_buf <= 1)[:, None, None], 
+            #     torch.stack([self.contact_filt.float()] * self.cfg.env.contact_buf_len, dim=1),
+            #     torch.cat([
+            #         self.contact_buf[:, 1:],
+            #         self.contact_filt.float().unsqueeze(1)
+            #     ], dim=1)
+            # )              
+            
+            # pass
+    
+    def get_amp_observations(self):
+        joint_pos = self.dof_pos
+        # foot_pos = self.foot_positions_in_base_frame(self.dof_pos).to(self.device)
+        base_lin_vel = self.base_lin_vel
+        base_ang_vel = self.base_ang_vel
+        joint_vel = self.dof_vel
+        # z_pos = self.root_states[:, 2:3]
+        # if (self.cfg.terrain.measure_heights):
+        #     z_pos = z_pos - torch.mean(self.measured_heights, dim=-1, keepdim=True)
+        # return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
+        return torch.cat((joint_pos, base_lin_vel, base_ang_vel, joint_vel), dim=-1)
+    
+    def get_observations(self):
+        # MBRL
+        if self.cfg.env.include_history_steps is not None:
+            policy_obs = self.obs_buf_history.get_obs_vec(np.arange(self.include_history_steps))
+        else:
+            policy_obs = self.obs_buf
+        # MBRL
+        return policy_obs
+        # return self.obs_buf
+    
+    def get_privileged_observations(self):
+        return self.privileged_obs_buf
+
     def termination(self):
         # self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         # self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
         # self.reset_buf |= self.time_out_buf
-        self.reset_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        
+        # self.reset_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        
+        self.reset_buf = torch.zeros((self.num_envs, ), dtype=torch.bool, device=self.device)
+        roll_cutoff = torch.abs(self.roll) > 1.5
+        pitch_cutoff = torch.abs(self.pitch) > 1.5
+        reach_goal_cutoff = self.cur_goal_idx >= self.cfg.terrain.num_goals
+        height_cutoff = self.root_states[:, 2] < -0.25
+
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
+        self.time_out_buf |= reach_goal_cutoff
+        # print("reach_goal_cutoff: ", reach_goal_cutoff)
+        self.reset_buf |= self.time_out_buf
+        self.reset_buf |= roll_cutoff
+        self.reset_buf |= pitch_cutoff
+        self.reset_buf |= height_cutoff
+        # print("time_out_buf: ", self.time_out_buf)
+        # print("roll_cutoff: ", roll_cutoff)
+        # print("pitch_cutoff: ", pitch_cutoff)
+        # print("height_cutoff: ", height_cutoff)
         pass
     
     def lookat(self, i):
@@ -673,13 +920,30 @@ class Hexapod():
         control_type = self.cfg.control.control_type
         if control_type=="P":
             torques = self.p_gains*(actions_scaled + self.default_dof_pos - self.dof_pos) - self.d_gains*self.dof_vel
+            # print("joint vel: ", self.dof_vel)
         elif control_type=="V":
             torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
         elif control_type=="T":
             torques = actions_scaled
         else:
             raise NameError(f"Unknown controller type: {control_type}")
-        return torch.clip(torques, -self.torque_limits, self.torque_limits)
+        return torch.clip(torques, -self.torque_limits, self.torque_limits) # 4.2
+        
+        # actions_scaled = actions * self.cfg.control.action_scale
+        # control_type = self.cfg.control.control_type
+        # if control_type=="P":
+        #     if not self.cfg.domain_rand.randomize_motor:  # TODO add strength to gain directly
+        #         torques = self.p_gains*(actions_scaled + self.default_dof_pos_all - self.dof_pos) - self.d_gains*self.dof_vel
+        #     else:
+        #         torques = self.motor_strength[0] * self.p_gains*(actions_scaled + self.default_dof_pos_all - self.dof_pos) - self.motor_strength[1] * self.d_gains*self.dof_vel
+                
+        # elif control_type=="V":
+        #     torques = self.p_gains*(actions_scaled - self.dof_vel) - self.d_gains*(self.dof_vel - self.last_dof_vel)/self.sim_params.dt
+        # elif control_type=="T":
+        #     torques = actions_scaled
+        # else:
+        #     raise NameError(f"Unknown controller type: {control_type}")
+        # return torch.clip(torques, -self.torque_limits, self.torque_limits)
         # return actions
     
     # def _update_terrain_curriculum(self, env_ids):
@@ -734,7 +998,7 @@ class Hexapod():
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
-
+        self._reset_root_states(torch.arange(self.num_envs, device=self.device))
         self.force_sensor_tensor = gymtorch.wrap_tensor(force_sensor_tensor).view(self.num_envs, 6, 6) # for feet only, see create_env()
         self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
 
@@ -753,6 +1017,11 @@ class Hexapod():
         self.last_dof_vel = torch.zeros_like(self.dof_vel)
         self.last_root_vel = torch.zeros_like(self.root_states[:, 7:13])
         self.commands = torch.zeros(self.num_envs, self.cfg.commands.num_commands, dtype=torch.float, device=self.device, requires_grad=False) # x vel, y vel, yaw vel, heading
+        # 固定目标速度
+        self.commands[:, 0] = 0.0  # x方向速度
+        self.commands[:, 1] = 1.0  # y方向速度
+        self.commands[:, 2] = 0.0  # yaw角速度
+        
         self.commands_scale = torch.tensor([self.obs_scales.lin_vel, self.obs_scales.lin_vel, self.obs_scales.ang_vel], device=self.device, requires_grad=False,) # TODO change this
         self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
         self.last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
@@ -855,6 +1124,7 @@ class Hexapod():
             self.dof_vel_limits = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
             self.torque_limits = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
             for i in range(len(props)):
+                # props[i]["driveMode"] = gymapi.DOF_MODE_EFFORT  # 设置为力控模式
                 self.dof_pos_limits[i, 0] = props["lower"][i].item()
                 self.dof_pos_limits[i, 1] = props["upper"][i].item()
                 self.dof_vel_limits[i] = props["velocity"][i].item()
@@ -864,6 +1134,7 @@ class Hexapod():
                 r = self.dof_pos_limits[i, 1] - self.dof_pos_limits[i, 0]
                 self.dof_pos_limits[i, 0] = m - 0.5 * r * self.cfg.rewards.soft_dof_pos_limit
                 self.dof_pos_limits[i, 1] = m + 0.5 * r * self.cfg.rewards.soft_dof_pos_limit
+            # print("torque limits: ", self.torque_limits)
         return props
 
     def _process_rigid_body_props(self, props, env_id):
@@ -953,6 +1224,124 @@ class Hexapod():
     #             else:
     #                 gymutil.draw_lines(non_edge_geom, self.gym, self.viewer, self.envs[i], pose)
     
+    # def _reward_tracking_goal_vel(self):
+    #     norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
+    #     target_vec_norm = self.target_pos_rel / (norm + 1e-5)
+    #     # print("self.commands: ", self.commands)
+    #     cur_vel = self.root_states[:, 7:9]
+    #     # print("cur_vel: ", cur_vel)
+    #     rew = torch.minimum(torch.sum(target_vec_norm * cur_vel, dim=-1), self.commands[:, 0]) / (self.commands[:, 0] + 1e-5)
+    #     # print("rew: ", rew)
+    #     return rew
+
+    # def _reward_tracking_goal_vel(self):
+    #     # 从 commands 中提取目标速度的 x-y 分量（假设 commands 的前两列是目标线速度）
+    #     target_vel_xy = self.commands[:, 0:2]  # shape: (num_envs, 2)
+        
+    #     # 计算目标速度的模长（目标速度大小）
+    #     target_speed = torch.norm(target_vel_xy, dim=-1, keepdim=True)  # shape: (num_envs, 1)
+        
+    #     # 归一化目标方向（如果目标速度为 0，则方向为 0）
+    #     target_dir = target_vel_xy / (target_speed + 1e-5)  # shape: (num_envs, 2)
+        
+    #     # 获取当前基座的 x-y 线速度
+    #     current_vel_xy = self.root_states[:, 7:9]  # shape: (num_envs, 2)
+    #     # print("current_vel_xy: ", current_vel_xy)
+        
+    #     # # 计算当前速度在目标方向上的投影（点积）
+    #     # vel_projection = torch.sum(target_dir * current_vel_xy, dim=-1)  # shape: (num_envs,)
+        
+    #     # 使用 EMA 速度计算投影
+    #     vel_projection = torch.sum(target_dir * self.velocity_ema, dim=-1)
+    #     print("ema vel: ", self.velocity_ema)
+        
+    #     # 归一化奖励：投影值 / 目标速度大小（当目标速度为 0 时奖励为 0）
+    #     rew = torch.where(
+    #         target_speed.squeeze() > 1e-3,  # 判断目标速度是否非零
+    #         vel_projection / (target_speed.squeeze() + 1e-5),
+    #         torch.zeros_like(vel_projection)
+    #     )
+    #     # print("rew: ", rew)
+    #     return rew
+    
+    def _reward_tracking_goal_vel(self):
+        #     # 从 commands 中提取目标速度的 x-y 分量（假设 commands 的前两列是目标线速度）
+        target_vel_x = self.commands[:, 0:1]  # shape: (num_envs, 2)
+        target_vel_y = self.commands[:, 1:2]
+        # current_vel_x = self.root_states[:, 7:8]  # shape: (num_envs, 2)
+        # current_vel_y = self.root_states[:, 8:9]
+        current_vel_x = self.velocity_ema[:, 0:1]
+        current_vel_y = self.velocity_ema[:, 1:2]
+        # print("target_vel_x: ", target_vel_x)
+        # print("current_vel_x: ", current_vel_x)
+        # print("target_vel_y: ", target_vel_y)
+        # print("current_vel_y: ", current_vel_y)
+        
+        rew_x = torch.exp(-torch.abs(target_vel_x - current_vel_x)/0.05)
+        rew_y = torch.exp(-torch.abs(target_vel_y - current_vel_y)/0.05)
+        rew = (rew_x + rew_y).reshape(-1)
+        # print("rew velocity tracking: ", rew)
+        # rew = 0
+        return rew
+    
+    def _reward_tracking_yaw(self):
+        self.target_yaw = torch.atan2(self.commands[:, 1], self.commands[:, 0])
+        rew = torch.exp(-torch.abs(self.target_yaw - self.yaw))
+        # print("yaw: ", self.yaw)
+        # print("target_yaw: ", self.target_yaw)
+        # print("rew: ", rew)
+        return rew
+    
+    def _reward_lin_vel_z(self):
+        rew = torch.square(self.base_lin_vel[:, 2])
+        # rew[self.env_class != 17] *= 0.5
+        return rew
+    
+    def _reward_ang_vel_xy(self):
+        return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+     
+    def _reward_orientation(self):
+        rew = torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
+        # rew[self.env_class != 17] = 0.
+        return rew
+
+    def _reward_dof_acc(self):
+        return torch.sum(torch.square((self.last_dof_vel - self.dof_vel) / self.dt), dim=1)
+
+    def _reward_collision(self):
+        return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
+
+    def _reward_action_rate(self):
+        return torch.norm(self.last_actions - self.actions, dim=1)
+
+    def _reward_delta_torques(self):
+        return torch.sum(torch.square(self.torques - self.last_torques), dim=1)
+    
+    def _reward_torques(self):
+        return torch.sum(torch.square(self.torques), dim=1)
+
+    # def _reward_hip_pos(self):
+    #     return torch.sum(torch.square(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]), dim=1)
+
+    def _reward_dof_error(self):
+        dof_error = torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1)
+        return dof_error
+    
+    def _reward_feet_stumble(self):
+        # Penalize feet hitting vertical surfaces
+        rew = torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
+             4 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
+        return rew.float()
+
+    # def _reward_feet_edge(self):
+    #     feet_pos_xy = ((self.rigid_body_states[:, self.feet_indices, :2] + self.terrain.cfg.border_size) / self.cfg.terrain.horizontal_scale).round().long()  # (num_envs, 4, 2)
+    #     feet_pos_xy[..., 0] = torch.clip(feet_pos_xy[..., 0], 0, self.x_edge_mask.shape[0]-1)
+    #     feet_pos_xy[..., 1] = torch.clip(feet_pos_xy[..., 1], 0, self.x_edge_mask.shape[1]-1)
+    #     feet_at_edge = self.x_edge_mask[feet_pos_xy[..., 0], feet_pos_xy[..., 1]]
+    
+    #     self.feet_at_edge = self.contact_filt & feet_at_edge
+    #     rew = (self.terrain_levels > 3) * torch.sum(self.feet_at_edge, dim=-1)
+    #     return rew
     
 if __name__ == "__main__":
     cfg = HexapodRobotCfg()

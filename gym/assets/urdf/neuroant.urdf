@@ -74,15 +74,6 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/l1_bc.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="l1_bc"
@@ -97,10 +88,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l1_cf">
@@ -132,15 +123,6 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/l1_cf.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="l1_cf"
@@ -155,10 +137,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l1_ft">
@@ -213,10 +195,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l2_bc">
@@ -248,15 +230,6 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/l2_bc.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="l2_bc"
@@ -271,10 +244,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l2_cf">
@@ -306,15 +279,6 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/l2_cf.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="l2_cf"
@@ -329,10 +293,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l2_ft">
@@ -387,10 +351,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l3_bc">
@@ -422,15 +386,6 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/l3_bc.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="l3_bc"
@@ -445,10 +400,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l3_cf">
@@ -480,15 +435,6 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/l3_cf.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="l3_cf"
@@ -503,10 +449,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="l3_ft">
@@ -561,10 +507,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r1_bc">
@@ -596,15 +542,6 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/r1_bc.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="r1_bc"
@@ -619,10 +556,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r1_cf">
@@ -654,15 +591,6 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/r1_cf.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="r1_cf"
@@ -677,10 +605,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r1_ft">
@@ -735,10 +663,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r2_bc">
@@ -770,15 +698,6 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/r2_bc.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="r2_bc"
@@ -793,10 +712,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r2_cf">
@@ -828,15 +747,6 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/r2_cf.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="r2_cf"
@@ -851,10 +761,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r2_ft">
@@ -909,10 +819,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r3_bc">
@@ -944,15 +854,6 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/r3_bc.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="r3_bc"
@@ -967,10 +868,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r3_cf">
@@ -1002,15 +903,6 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="../meshes/r3_cf.STL" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="r3_cf"
@@ -1025,10 +917,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <link
     name="r3_ft">
@@ -1083,10 +975,10 @@
     <axis
       xyz="0 1.9702E-05 1" />
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="4.2"
-      velocity="1000" />
+      lower="-0.53"
+      upper="0.53"
+      effort="30"
+      velocity="28.6" />
   </joint>
   <!-- <sensor name="l1_bc_sensor" type="force_torque">
     <parent link="l1_bc"/>
