@@ -1,1 +1,2 @@
 logs/hexapod_example/Hexapod_plane/model_16000.pt filter=lfs diff=lfs merge=lfs -text
+logs/hexapod_example/Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel/model_15000.pt filter=lfs diff=lfs merge=lfs -text
