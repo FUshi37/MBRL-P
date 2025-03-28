@@ -52,7 +52,6 @@ class Terrain:
         self.env_length = cfg.terrain_length
         self.env_width = cfg.terrain_width
         self.proportions = [np.sum(cfg.terrain_proportions[:i + 1]) for i in range(len(cfg.terrain_proportions))]
-
         self.cfg.num_sub_terrains = cfg.num_rows * cfg.num_cols
         self.env_origins = np.zeros((cfg.num_rows, cfg.num_cols, 3))
 
@@ -106,15 +105,35 @@ class Terrain:
                 choice = j / self.cfg.num_cols + 0.001
 
                 terrain = self.make_terrain(choice, difficulty, i, j)
+                # terrain = self.make_terrain_discrete_obstacles(choice, difficulty, i, j)
                 self.add_terrain_to_map(terrain, i, j)
 
+    # def curriculum(self):
+    #     for j in range(self.cfg.num_cols):
+    #         for i in range(self.cfg.num_rows):
+    #             difficulty = i / self.cfg.num_rows
+    #             choice = j / self.cfg.num_cols + 0.001
+
+    #             terrain = self.make_terrain(choice, difficulty, i, j)
+                
+    #             self.add_terrain_to_map(terrain, i, j)
+                
     def curriculum(self):
         for j in range(self.cfg.num_cols):
             for i in range(self.cfg.num_rows):
-                difficulty = i / self.cfg.num_rows
-                choice = j / self.cfg.num_cols + 0.001
+                difficulty = (i+1) / self.cfg.num_rows / 10
+                # choice = j / self.cfg.num_cols + 0.001
 
-                terrain = self.make_terrain(choice, difficulty, i, j)
+                terrain = terrain_utils.SubTerrain("terrain",
+                                                width=self.width_per_env_pixels,
+                                                length=self.width_per_env_pixels,
+                                                vertical_scale=self.cfg.vertical_scale,
+                                                horizontal_scale=self.cfg.horizontal_scale)
+                
+                # print("difficulty", difficulty)
+                terrain_utils.random_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=difficulty)
+                # terrain_utils.create_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=difficulty)
+                # terrain_utils.generate_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=difficulty)
                 self.add_terrain_to_map(terrain, i, j)
 
     def selected_terrain(self):
@@ -126,10 +145,11 @@ class Terrain:
             terrain = terrain_utils.SubTerrain("terrain",
                                                width=self.width_per_env_pixels,
                                                length=self.width_per_env_pixels,
-                                               vertical_scale=self.vertical_scale,
-                                               horizontal_scale=self.horizontal_scale)
+                                               vertical_scale=self.cfg.vertical_scale,
+                                               horizontal_scale=self.cfg.horizontal_scale)
 
-            eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
+            # eval(terrain_type)(terrain, **self.cfg.terrain_kwargs.terrain_kwargs)
+            terrain_utils.random_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=0.05)
             self.add_terrain_to_map(terrain, i, j)
 
     def make_terrain(self, choice, difficulty, i = 0, j = 0):
@@ -148,6 +168,8 @@ class Terrain:
         pit_depth = 0.6 * difficulty
         tilt_width = 0.32 - 0.04 * difficulty
         stair_step_width = 0.30 + random.random() * 0.04
+        # print("proportions in terrain", self.proportions)
+        # print("choice", choice)
         if choice < self.proportions[0]:
             terrain_utils.wave_terrain(terrain, num_waves=5, amplitude=amplitude)
             terrain_utils.random_uniform_terrain(terrain, min_height=-0.05, max_height=0.05, step=0.005,
@@ -315,7 +337,23 @@ class Terrain:
             terrain_utils.random_uniform_terrain(terrain, min_height=-0.05, max_height=0.05, step=0.005,
                                                  downsampled_scale=0.2)
         return terrain
-
+    
+    def make_terrain_discrete_obstacles(self, choice, difficulty, i = 0, j = 0):
+        terrain = terrain_utils.SubTerrain("terrain",
+                                           width=self.width_per_env_pixels,
+                                           length=self.width_per_env_pixels,
+                                           vertical_scale=self.cfg.vertical_scale,
+                                           horizontal_scale=self.cfg.horizontal_scale)
+        discrete_obstacles_height = 0.05 + difficulty * 0.2
+        
+        num_rectangles = 20
+        rectangle_min_size = 1.
+        rectangle_max_size = 2.
+        terrain_utils.discrete_obstacles_terrain(terrain, discrete_obstacles_height, rectangle_min_size,
+                                                    rectangle_max_size, num_rectangles, platform_size=3.)
+        # terrain_utils.random_uniform_terrain(terrain, min_height=-0.05, max_height=0.05, step=0.005,
+        #                                         downsampled_scale=0.2)
+        
 
     def add_terrain_to_map(self, terrain, row, col):
         i = row
@@ -335,6 +373,42 @@ class Terrain:
         y2 = int((self.env_width / 2. + 1) / terrain.horizontal_scale)
         env_origin_z = np.max(terrain.height_field_raw[x1:x2, y1:y2]) * terrain.vertical_scale
         self.env_origins[i, j] = [env_origin_x, env_origin_y, env_origin_z]
+
+    def get_box_mesh(self):
+        """ 生成严格的立方体顶点和三角面索引，使得地形不会出现斜面 """
+        vertices = []
+        triangles = []
+
+        for x in range(self.tot_cols):
+            for y in range(self.tot_rows):
+                z = self.height_field_raw[x, y]
+
+                # 立方体的八个顶点
+                v0 = [x, y, z]
+                v1 = [x + 1, y, z]
+                v2 = [x, y + 1, z]
+                v3 = [x + 1, y + 1, z]
+                v4 = [x, y, z + 1]
+                v5 = [x + 1, y, z + 1]
+                v6 = [x, y + 1, z + 1]
+                v7 = [x + 1, y + 1, z + 1]
+
+                # 追加到顶点列表
+                vertices.extend([v0, v1, v2, v3, v4, v5, v6, v7])
+
+                # 定义立方体的六个面，每个面由两个三角形组成
+                offset = len(vertices) - 8
+                faces = [
+                    [offset, offset + 1, offset + 2], [offset + 1, offset + 2, offset + 3],  # 底面
+                    [offset + 4, offset + 5, offset + 6], [offset + 5, offset + 6, offset + 7],  # 顶面
+                    [offset, offset + 1, offset + 4], [offset + 1, offset + 4, offset + 5],  # 前面
+                    [offset + 2, offset + 3, offset + 6], [offset + 3, offset + 6, offset + 7],  # 后面
+                    [offset, offset + 2, offset + 4], [offset + 2, offset + 4, offset + 6],  # 左面
+                    [offset + 1, offset + 3, offset + 5], [offset + 3, offset + 5, offset + 7]  # 右面
+                ]
+                triangles.extend(faces)
+
+        return np.array(vertices), np.array(triangles)
 
 
 def gap_terrain(terrain, gap_size, platform_size=1.):
@@ -437,3 +511,4 @@ def convert_heightfield_to_trimesh(height_field_raw, horizontal_scale, vertical_
         triangles[start + 1:stop:2, 2] = ind3
 
     return vertices, triangles, move_x != 0
+

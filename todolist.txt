@@ -61,3 +61,56 @@ base height 和 measure_heights
 45. 更改urdf关节角限制 done 效果很好
 
 46. 23th实现了固定速度直走平地，没有各种limits奖励项，角度跟的不是很好（系数2.0）
+    24th实现了人以速度平地直走
+
+47. 修改课程学习的逻辑
+48. 地形生成不是立方体紧密排列，可能与trimesh有关
+49. 设置self_collision为0,即开启。因为机器人会学到两个腿相撞的情况。
+
+34th_run
+50. update_terrain_curriculum 改为 distance done
+51. terrain difficulty改难一点 done
+52. PD改硬一点 done
+
+53. 修改ang_vel奖励函数的bug
+
+54. 修改角度跟踪奖励的sigma为0.1代替0.001
+55. 修改urdf的bug，isaac gym无法优化圆柱体，会优化成胶囊。足端mass太小导致feet_air_time一直很大。
+
+56. 机器人走第一个terrain的时候脚会被卡住
+
+57. 修改urdf bug
+
+58. 跟随速度再大些？
+59. feet_air_time计算貌似有问题，机器人足端高频触地
+60. feet contact force有负数值
+61. self_collision 开不开
+
+62. no_feet_air_time
+63. 对足端负数力作惩罚，penalize_negative_force
+45th_run有一定不错的效果，走起来比较正常
+
+64. 加入clearance，足端高度要高于一定值
+46th_run
+65. base_height奖励项设为0
+66. tarcking_lin_vel奖励设计时加入速度上限裁减 no
+67. smothness -0.0001
+47th_run一般
+
+68. terrain & measure_heights
+
+69. 调大feet_air_time时间和检测力
+70. foot_height_target改为0.02
+
+71. action_scale改为0.3 效果非常垃圾
+
+72. 改进feet_air_time，计算最小值作为奖励值. 调大smoothness
+73. _reward_clearance的计算逻辑再修改一下
+
+74. 修正了feet_air_time & no_feet_air_time的计算逻辑
+49th
+75. 最初地形设置成非平面地形
+50th
+76. 加了y负方向速度惩罚
+77. 改回平均速度
+50th blue 能够在稍微不平地面上行走 Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel

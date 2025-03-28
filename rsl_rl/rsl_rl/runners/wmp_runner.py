@@ -288,6 +288,7 @@ class WMPRunner:
                     history = self.trajectory_history.flatten(1).to(self.device)
                     # Hexapod ban amp
                     # actions = self.alg.act(obs, critic_obs, amp_obs, history, wm_feature.to(self.env.device))
+                    # print("critic_obs_shpae: ", critic_obs.shape)
                     actions = self.alg.act(obs, critic_obs, history, wm_feature.to(self.env.device))
                     # obs, privileged_obs, rewards, dones, infos, reset_env_ids, terminal_amp_states = self.env.step(
                     #     actions)
@@ -691,7 +692,7 @@ class WMPRunner:
                             'collection_time']:.3f}s, learning {locs['learn_time']:.3f}s)\n"""
                           f"""{'Value function loss:':>{pad}} {locs['mean_value_loss']:.4f}\n"""
                           f"""{'Surrogate loss:':>{pad}} {locs['mean_surrogate_loss']:.4f}\n"""
-                          f"""{'Estimator loss:':>{pad}} {locs['mean_estimator_loss']:.4f}\n"""
+                        #   f"""{'Estimator loss:':>{pad}} {locs['mean_estimator_loss']:.4f}\n"""
                           f"""{'Mean action noise std:':>{pad}} {mean_std.item():.2f}\n""")
                         #   f"""{'Mean reward/step:':>{pad}} {locs['mean_reward']:.2f}\n"""
                         #   f"""{'Mean episode length/episode:':>{pad}} {locs['mean_trajectory_length']:.2f}\n""")

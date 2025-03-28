@@ -104,6 +104,7 @@ class PPO:
         # self.transition.actions = self.actor_critic.act(obs).detach()
         self.transition.actions = self.actor_critic.act(aug_obs, history, wm_feature).detach()
         # self.transition.values = self.actor_critic.evaluate(critic_obs).detach()
+        # print("aug_Critic_obs shape: ", aug_critic_obs.shape)
         self.transition.values = self.actor_critic.evaluate(aug_critic_obs, wm_feature).detach()
         self.transition.actions_log_prob = self.actor_critic.get_actions_log_prob(self.transition.actions).detach()
         self.transition.action_mean = self.actor_critic.action_mean.detach()

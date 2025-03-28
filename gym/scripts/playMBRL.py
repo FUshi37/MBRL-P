@@ -51,10 +51,10 @@ import torch
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     # override some parameters for testing
-    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 10)
-    env_cfg.depth.camera_num_envs = min(env_cfg.depth.camera_num_envs, 10)
-    env_cfg.terrain.num_cols = 1
-    env_cfg.terrain.curriculum = False
+    env_cfg.env.num_envs = min(env_cfg.env.num_envs, 2)
+    env_cfg.depth.camera_num_envs = min(env_cfg.depth.camera_num_envs, 2)
+    env_cfg.terrain.num_cols = env_cfg.env.num_envs
+    env_cfg.terrain.curriculum = True#False
     env_cfg.noise.add_noise = False
     # env_cfg.domain_rand.randomize_friction = False
     # env_cfg.domain_rand.randomize_restitution = False
@@ -102,24 +102,24 @@ def play(args):
      }[args.terrain]
 
     env_cfg.commands.ranges.lin_vel_x = [0.0, 0.0]
-    env_cfg.commands.ranges.lin_vel_y = [0.07, 0.07]
+    env_cfg.commands.ranges.lin_vel_y = [0.075, 0.075]
     env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
     env_cfg.commands.ranges.heading = [0, 0]
 
     env_cfg.commands.ranges.flat_lin_vel_x = [0.0, 0.0]
-    env_cfg.commands.ranges.flat_lin_vel_y = [0.07, 0.07]
+    env_cfg.commands.ranges.flat_lin_vel_y = [0.075, 0.075]
     env_cfg.commands.ranges.flat_ang_vel_yaw = [0.0, 0.0]
 
-    env_cfg.depth.use_camera = True
+    env_cfg.depth.use_camera = False#True
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
+    # env.terrain_levels = torch.ones((env.num_envs,), device=env.device).long()
     _, _ = env.reset()
     obs = env.get_observations()
     # load policy
     train_cfg.runner.resume = True
-    train_cfg.runner.load_run = 'Hexapod_plane'
-
+    train_cfg.runner.load_run = 'Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel' #'Hexapod_terrain_with_measureheight_nonmeanvel'#'Hexapod_plane_randvel'
 
     train_cfg.runner.checkpoint = -1
     ppo_runner, train_cfg = task_registry.make_wmp_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)

@@ -39,7 +39,7 @@ class LeggedRobotCfg(BaseConfig):
         num_observations = 235
         privileged_obs = True  # if True, add the privileged information in the obs
         privileged_dim = 24 + 3  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
-        height_dim = 187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
+        height_dim = 273#187  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 18 # 12 for quadruped, 18 for hexapod
         env_spacing = 3.  # not used with heightfields/trimeshes 
@@ -48,8 +48,8 @@ class LeggedRobotCfg(BaseConfig):
         reference_state_initialization = False # initialize state from reference data // For hexapod no amp
 
     class terrain:
-        is_plane = True#True
-        mesh_type = 'plane' #'trimesh' # "heightfield" # none, plane, heightfield or trimesh
+        is_plane = False#True
+        mesh_type = 'trimesh' #'trimesh' # "heightfield" # none, plane, heightfield or trimesh
         horizontal_scale = 0.1 # [m]
         vertical_scale = 0.005 # [m]
         border_size = 50 # [m]  change 25 to 50
@@ -59,8 +59,10 @@ class LeggedRobotCfg(BaseConfig):
         restitution = 0.
         # rough terrain only:
         measure_heights = True
-        measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
-        measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        # measured_points_x = [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8] # 1mx1.6m rectangle (without center line)
+        # measured_points_y = [-0.5, -0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4, 0.5]
+        measured_points_x = [-0.4, -0.35, -0.3, -0.25, -0.2, -0.15, -0.1, -0.05, 0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4] # 1mx1.6m rectangle (without center line) # 17
+        measured_points_y = [-0.6, -0.55, -0.5, -0.45, -0.4, -0.35, -0.3, -0.25, -0.2, -0.15, -0.1, -0.05, 0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6] # 25
         selected = False # select a unique terrain type and pass all arguments
         terrain_kwargs = None # Dict of arguments for selected terrain
         max_init_terrain_level = 0 # starting curriculum state

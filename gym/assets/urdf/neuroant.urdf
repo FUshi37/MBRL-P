@@ -36,11 +36,10 @@
     </visual>
     <collision>
       <origin
-        xyz="0 0 0"
+        xyz="0 -0.185 0.05"
         rpy="0 0 0" />
       <geometry>
-        <mesh
-          filename="../meshes/base_link.STL" />
+        <box size="0.14 0.4 0.1"/> <!-- 长宽高需要根据实际模型确定 -->
       </geometry>
     </collision>
   </link>
@@ -74,6 +73,14 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
+    <collision>
+      <origin
+        xyz="0.032 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.03 0.045"/> <!-- 长宽高需要根据实际模型确定 -->
+      </geometry>
+    </collision>
   </link>
   <joint
     name="l1_bc"
@@ -88,10 +95,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="l1_cf">
@@ -123,6 +130,14 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
+    <!-- <collision>
+      <origin
+        xyz="0.0 0.0 0"
+        rpy="0 1.5570 0" />
+      <geometry>
+        <box size="0.015 0.015 0.03"/>
+      </geometry>
+    </collision> -->
   </link>
   <joint
     name="l1_cf"
@@ -137,10 +152,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="l1_ft">
@@ -174,11 +189,10 @@
     </visual>
     <collision>
       <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+        xyz="-0.011 -0.06 0"
+        rpy="1.5708 0 -0.327" />
       <geometry>
-        <mesh
-          filename="../meshes/l1_ft.STL" />
+        <box size="0.02 0.02 0.122"/>
       </geometry>
     </collision>
   </link>
@@ -195,11 +209,44 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="0.000"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
+<!-- 2. 新建足端link -->
+<link name="l1_foot_tip">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.06"/>  <!-- 根据实际重量调整 -->
+    <inertia
+      ixx="9.6e-06" ixy="0" ixz="0"
+      iyy="9.6e-06" iyz="0"
+      izz="9.6e-06"/> <!-- 球体惯性矩公式：2/5*m*r² -->
+  </inertial>
+  <visual>
+    <geometry>
+      <sphere radius="0.008"/>
+    </geometry>
+    <material name="foot_material">
+      <color rgba="1 0 0 0.5"/> <!-- 半透明红色便于观察 -->
+    </material>
+  </visual>
+  <collision>
+    <origin
+    xyz="0.0 -0.00 0"
+    rpy="0 0 0" />
+    <geometry>
+      <sphere radius="0.008"/> <!-- 碰撞半径可略大于视觉 -->
+    </geometry>
+  </collision>
+</link>
+<!-- 3. 添加足端连接关节 -->
+<joint name="l1_foot_joint" type="fixed">
+  <parent link="l1_ft"/>
+  <child link="l1_foot_tip"/>
+  <origin xyz="-0.0337 -0.127 0" rpy="0 0 0"/> <!-- 根据实际位置调整 -->
+</joint>
   <link
     name="l2_bc">
     <inertial>
@@ -230,6 +277,14 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
+    <collision>
+      <origin
+        xyz="0.032 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.03 0.045"/> <!-- 长宽高需要根据实际模型确定 -->
+      </geometry>
+    </collision>
   </link>
   <joint
     name="l2_bc"
@@ -244,10 +299,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="l2_cf">
@@ -279,6 +334,15 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
+    <!-- <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l2_cf.STL" />
+      </geometry>
+    </collision> -->
   </link>
   <joint
     name="l2_cf"
@@ -293,10 +357,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="l2_ft">
@@ -328,13 +392,12 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
+<collision>
       <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+        xyz="-0.011 -0.06 0"
+        rpy="1.5708 0 -0.327" />
       <geometry>
-        <mesh
-          filename="../meshes/l2_ft.STL" />
+        <box size="0.02 0.02 0.122"/>
       </geometry>
     </collision>
   </link>
@@ -351,11 +414,44 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="0.000"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
+<!-- 2. 新建足端link -->
+<link name="l2_foot_tip">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.06"/>  <!-- 根据实际重量调整 -->
+    <inertia
+      ixx="9.6e-06" ixy="0" ixz="0"
+      iyy="9.6e-06" iyz="0"
+      izz="9.6e-06"/> <!-- 球体惯性矩公式：2/5*m*r² -->
+  </inertial>
+  <visual>
+    <geometry>
+      <sphere radius="0.008"/>
+    </geometry>
+    <material name="foot_material">
+      <color rgba="1 0 0 0.5"/> <!-- 半透明红色便于观察 -->
+    </material>
+  </visual>
+  <collision>
+    <origin
+    xyz="0.0 -0.00 0"
+    rpy="0 0 0" />
+    <geometry>
+      <sphere radius="0.008"/> <!-- 碰撞半径可略大于视觉 -->
+    </geometry>
+  </collision>
+</link>
+<!-- 3. 添加足端连接关节 -->
+<joint name="l2_foot_joint" type="fixed">
+  <parent link="l2_ft"/>
+  <child link="l2_foot_tip"/>
+  <origin xyz="-0.0337 -0.127 0" rpy="0 0 0"/> <!-- 根据实际位置调整 -->
+</joint>
   <link
     name="l3_bc">
     <inertial>
@@ -386,6 +482,14 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
+    <collision>
+      <origin
+        xyz="0.032 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.03 0.045"/> <!-- 长宽高需要根据实际模型确定 -->
+      </geometry>
+    </collision>
   </link>
   <joint
     name="l3_bc"
@@ -400,10 +504,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="l3_cf">
@@ -435,6 +539,15 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
+    <!-- <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/l3_cf.STL" />
+      </geometry>
+    </collision> -->
   </link>
   <joint
     name="l3_cf"
@@ -449,10 +562,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="l3_ft">
@@ -484,13 +597,12 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
+<collision>
       <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+        xyz="-0.011 -0.06 0"
+        rpy="1.5708 0 -0.327" />
       <geometry>
-        <mesh
-          filename="../meshes/l3_ft.STL" />
+        <box size="0.02 0.02 0.122"/>
       </geometry>
     </collision>
   </link>
@@ -507,11 +619,44 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="0.000"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
+<!-- 2. 新建足端link -->
+<link name="l3_foot_tip">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.06"/>  <!-- 根据实际重量调整 -->
+    <inertia
+      ixx="9.6e-06" ixy="0" ixz="0"
+      iyy="9.6e-06" iyz="0"
+      izz="9.6e-06"/> <!-- 球体惯性矩公式：2/5*m*r² -->
+  </inertial>
+  <visual>
+    <geometry>
+      <sphere radius="0.008"/>
+    </geometry>
+    <material name="foot_material">
+      <color rgba="1 0 0 0.5"/> <!-- 半透明红色便于观察 -->
+    </material>
+  </visual>
+  <collision>
+    <origin
+    xyz="0.0 -0.00 0"
+    rpy="0 0 0" />
+    <geometry>
+      <sphere radius="0.008"/> <!-- 碰撞半径可略大于视觉 -->
+    </geometry>
+  </collision>
+</link>
+<!-- 3. 添加足端连接关节 -->
+<joint name="l3_foot_joint" type="fixed">
+  <parent link="l3_ft"/>
+  <child link="l3_foot_tip"/>
+  <origin xyz="-0.0337 -0.127 0" rpy="0 0 0"/> <!-- 根据实际位置调整 -->
+</joint>
   <link
     name="r1_bc">
     <inertial>
@@ -542,6 +687,14 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
+    <collision>
+      <origin
+        xyz="0.032 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.03 0.045"/> <!-- 长宽高需要根据实际模型确定 -->
+      </geometry>
+    </collision>
   </link>
   <joint
     name="r1_bc"
@@ -556,10 +709,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="r1_cf">
@@ -591,6 +744,15 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
+    <!-- <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r1_cf.STL" />
+      </geometry>
+    </collision> -->
   </link>
   <joint
     name="r1_cf"
@@ -605,10 +767,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="r1_ft">
@@ -640,13 +802,12 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
+<collision>
       <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+        xyz="-0.011 0.06 0"
+        rpy="1.5708 0 0.327" />
       <geometry>
-        <mesh
-          filename="../meshes/r1_ft.STL" />
+        <box size="0.02 0.02 0.122"/>
       </geometry>
     </collision>
   </link>
@@ -663,11 +824,44 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0"
+      effort="20"
+      velocity="20.0" />
   </joint>
+<!-- 2. 新建足端link -->
+<link name="r1_foot_tip">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.06"/>  <!-- 根据实际重量调整 -->
+    <inertia
+      ixx="9.6e-06" ixy="0" ixz="0"
+      iyy="9.6e-06" iyz="0"
+      izz="9.6e-06"/> <!-- 球体惯性矩公式：2/5*m*r² -->
+  </inertial>
+  <visual>
+    <geometry>
+      <sphere radius="0.008"/>
+    </geometry>
+    <material name="foot_material">
+      <color rgba="1 0 0 0.5"/> <!-- 半透明红色便于观察 -->
+    </material>
+  </visual>
+  <collision>
+    <origin
+    xyz="0.0 -0.00 0"
+    rpy="0 0 0" />
+    <geometry>
+      <sphere radius="0.008"/> <!-- 碰撞半径可略大于视觉 -->
+    </geometry>
+  </collision>
+</link>
+<!-- 3. 添加足端连接关节 -->
+<joint name="r1_foot_joint" type="fixed">
+  <parent link="r1_ft"/>
+  <child link="r1_foot_tip"/>
+  <origin xyz="-0.0337 0.127 0" rpy="0 0 0"/> <!-- 根据实际位置调整 -->
+</joint>
   <link
     name="r2_bc">
     <inertial>
@@ -698,6 +892,14 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
+    <collision>
+      <origin
+        xyz="0.032 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.03 0.045"/> <!-- 长宽高需要根据实际模型确定 -->
+      </geometry>
+    </collision>
   </link>
   <joint
     name="r2_bc"
@@ -712,10 +914,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="r2_cf">
@@ -747,6 +949,15 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
+    <!-- <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r2_cf.STL" />
+      </geometry>
+    </collision> -->
   </link>
   <joint
     name="r2_cf"
@@ -761,10 +972,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="r2_ft">
@@ -796,13 +1007,12 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
+<collision>
       <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+        xyz="-0.011 0.06 0"
+        rpy="1.5708 0 0.327" />
       <geometry>
-        <mesh
-          filename="../meshes/r2_ft.STL" />
+        <box size="0.02 0.02 0.122"/>
       </geometry>
     </collision>
   </link>
@@ -819,11 +1029,44 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0"
+      effort="20"
+      velocity="20.0" />
   </joint>
+<!-- 2. 新建足端link -->
+<link name="r2_foot_tip">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.06"/>  <!-- 根据实际重量调整 -->
+    <inertia
+      ixx="9.6e-06" ixy="0" ixz="0"
+      iyy="9.6e-06" iyz="0"
+      izz="9.6e-06"/> <!-- 球体惯性矩公式：2/5*m*r² -->
+  </inertial>
+  <visual>
+    <geometry>
+      <sphere radius="0.008"/>
+    </geometry>
+    <material name="foot_material">
+      <color rgba="1 0 0 0.5"/> <!-- 半透明红色便于观察 -->
+    </material>
+  </visual>
+  <collision>
+    <origin
+    xyz="0.0 -0.00 0"
+    rpy="0 0 0" />
+    <geometry>
+      <sphere radius="0.008"/> <!-- 碰撞半径可略大于视觉 -->
+    </geometry>
+  </collision>
+</link>
+<!-- 3. 添加足端连接关节 -->
+<joint name="r2_foot_joint" type="fixed">
+  <parent link="r2_ft"/>
+  <child link="r2_foot_tip"/>
+  <origin xyz="-0.0337 0.127 0" rpy="0 0 0"/> <!-- 根据实际位置调整 -->
+</joint>
   <link
     name="r3_bc">
     <inertial>
@@ -854,6 +1097,14 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
+    <collision>
+      <origin
+        xyz="0.032 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.03 0.045"/> <!-- 长宽高需要根据实际模型确定 -->
+      </geometry>
+    </collision>
   </link>
   <joint
     name="r3_bc"
@@ -868,10 +1119,10 @@
     <axis
       xyz="0 0 -1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="r3_cf">
@@ -903,6 +1154,15 @@
           rgba="0.898039215686275 0.917647058823529 0.929411764705882 1" />
       </material>
     </visual>
+    <!-- <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="../meshes/r3_cf.STL" />
+      </geometry>
+    </collision> -->
   </link>
   <joint
     name="r3_cf"
@@ -917,10 +1177,10 @@
     <axis
       xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0.7854"
+      effort="20"
+      velocity="20.0" />
   </joint>
   <link
     name="r3_ft">
@@ -952,13 +1212,12 @@
           rgba="0.866666666666667 0.866666666666667 0.890196078431372 1" />
       </material>
     </visual>
-    <collision>
+<collision>
       <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
+        xyz="-0.011 0.06 0"
+        rpy="1.5708 0 0.327" />
       <geometry>
-        <mesh
-          filename="../meshes/r3_ft.STL" />
+        <box size="0.02 0.02 0.122"/>
       </geometry>
     </collision>
   </link>
@@ -966,90 +1225,51 @@
     name="r3_ft"
     type="revolute">
     <origin
-      xyz="0.064248 0 0"
-      rpy="1.9702E-05 0 0.85317" />
+      xyz="0.0642484706341889 0 -4.06229553796666E-05"
+      rpy="0 0 0.858119138737752" />
     <parent
       link="r3_cf" />
     <child
       link="r3_ft" />
     <axis
-      xyz="0 1.9702E-05 1" />
+      xyz="0 0 1" />
     <limit
-      lower="-0.53"
-      upper="0.53"
-      effort="30"
-      velocity="28.6" />
+      lower="-0.7854"
+      upper="0"
+      effort="20"
+      velocity="20.0" />
   </joint>
-  <!-- <sensor name="l1_bc_sensor" type="force_torque">
-    <parent link="l1_bc"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l1_cf_sensor" type="force_torque">
-    <parent link="l1_cf"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l1_ft_sensor" type="force_torque">
-    <parent link="l1_ft"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l2_bc_sensor" type="force_torque">
-    <parent link="l2_bc"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l2_cf_sensor" type="force_torque">
-    <parent link="l2_cf"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l2_ft_sensor" type="force_torque">
-    <parent link="l2_ft"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l3_bc_sensor" type="force_torque">
-    <parent link="l3_bc"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l3_cf_sensor" type="force_torque">
-    <parent link="l3_cf"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="l3_ft_sensor" type="force_torque">
-    <parent link="l3_ft"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r1_bc_sensor" type="force_torque">
-    <parent link="r1_bc"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r1_cf_sensor" type="force_torque">
-    <parent link="r1_cf"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r1_ft_sensor" type="force_torque">
-    <parent link="r1_ft"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r2_bc_sensor" type="force_torque">
-    <parent link="r2_bc"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r2_cf_sensor" type="force_torque">
-    <parent link="r2_cf"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r2_ft_sensor" type="force_torque">
-    <parent link="r2_ft"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r3_bc_sensor" type="force_torque">
-    <parent link="r3_bc"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r3_cf_sensor" type="force_torque">
-    <parent link="r3_cf"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor>
-  <sensor name="r3_ft_sensor" type="force_torque">
-    <parent link="r3_ft"/>
-    <pose>0 0 0 0 0 0</pose>
-  </sensor> -->
+<!-- 2. 新建足端link -->
+<link name="r3_foot_tip">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="0.06"/>  <!-- 根据实际重量调整 -->
+    <inertia
+      ixx="9.6e-06" ixy="0" ixz="0"
+      iyy="9.6e-06" iyz="0"
+      izz="9.6e-06"/> <!-- 球体惯性矩公式：2/5*m*r² -->
+  </inertial>
+  <visual>
+    <geometry>
+      <sphere radius="0.008"/>
+    </geometry>
+    <material name="foot_material">
+      <color rgba="1 0 0 0.5"/> <!-- 半透明红色便于观察 -->
+    </material>
+  </visual>
+  <collision>
+    <origin
+    xyz="0.0 -0.00 0"
+    rpy="0 0 0" />
+    <geometry>
+      <sphere radius="0.008"/> <!-- 碰撞半径可略大于视觉 -->
+    </geometry>
+  </collision>
+</link>
+<!-- 3. 添加足端连接关节 -->
+<joint name="r3_foot_joint" type="fixed">
+  <parent link="r3_ft"/>
+  <child link="r3_foot_tip"/>
+  <origin xyz="-0.0337 0.127 0" rpy="0 0 0"/> <!-- 根据实际位置调整 -->
+</joint>
 </robot>
