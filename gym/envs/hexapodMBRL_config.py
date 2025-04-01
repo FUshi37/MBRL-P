@@ -66,7 +66,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
     class terrain:
         is_plane = False
         mesh_type = 'trimesh'#'trimesh'#'plane'  # "heightfield" # none, plane, heightfield or trimesh or staircase
-        horizontal_scale = 0.1  # [m]
+        horizontal_scale = 0.03  # [m]
         vertical_scale = 0.005  # [m]
         border_size = 25  # [m]
         curriculum = True # True
@@ -95,8 +95,8 @@ class MBRLHexapodCfg(LeggedRobotCfg):
         max_init_terrain_level = 0  # starting curriculum state
         terrain_length = 4.
         terrain_width = 4.
-        num_rows = 10  # number of terrain rows (levels)
-        num_cols = 20  # number of terrain cols (types)
+        num_rows = 5  # number of terrain rows (levels)
+        num_cols = 4  # number of terrain cols (types)
         # terrain types: [wave, rough slope, stairs up, stairs down, discrete, gap, pit, tilt, crawl, rough_flat]
         # terrain_proportions = [0.0, 0.05, 0.15, 0.15, 0.0, 0.25, 0.25, 0.05, 0.05, 0.05]
         terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -285,7 +285,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             collision = -1.0
             feet_stumble = -7.5#5.0#-1.0
             action_rate = -0.01#-0.03
-            clearance = 5.0#-3.0
+            clearance = 7.5#5.0#-3.0
             smoothness = -0.01#-0.01
             # feet_edge = -1.0
             dof_error = 0#-0.04
@@ -301,6 +301,8 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             torque_limits = -5.0
             
             hip_phase = 0
+            
+            x_offset_penalty = -0.0
 
     class commands:
         curriculum = False
@@ -319,12 +321,12 @@ class MBRLHexapodCfg(LeggedRobotCfg):
 
         class ranges:
             lin_vel_x = [0.0, 0.0]  # min max [m/s]
-            lin_vel_y = [0.15, 0.15]  # min max [m/s]
+            lin_vel_y = [0.055, 0.055]  # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             heading = [-0., 0.]
 
             flat_lin_vel_x = [-0.0, 0.0]  # min max [m/s]
-            flat_lin_vel_y = [0.15, 0.15]  # min max [m/s]
+            flat_lin_vel_y = [0.055, 0.055]  # min max [m/s]
             flat_ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             flat_heading = [-3.14 / 4, 3.14 / 4]
 

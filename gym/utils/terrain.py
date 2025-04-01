@@ -131,7 +131,7 @@ class Terrain:
                                                 horizontal_scale=self.cfg.horizontal_scale)
                 
                 # print("difficulty", difficulty)
-                terrain_utils.random_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=difficulty)
+                terrain_utils.random_box_terrain(terrain, grid_size=0.18, min_height=0.0, max_height=difficulty)
                 # terrain_utils.create_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=difficulty)
                 # terrain_utils.generate_box_terrain(terrain, grid_size=0.2, min_height=0.0, max_height=difficulty)
                 self.add_terrain_to_map(terrain, i, j)

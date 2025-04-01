@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
@@ -68,7 +68,7 @@ def set_seed(seed):
     if seed == -1:
         seed = np.random.randint(0, 10000)
     print("Setting seed: {}".format(seed))
-    
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -117,7 +117,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
         load_run = os.path.join(root, load_run)
         print("load_run: ", load_run)
     # MBRL
-    
+
     # # TS
     # if not os.path.isdir(root):  # use first 4 chars to mactch the run name
     #     model_name_cand = os.path.basename(root)
@@ -129,7 +129,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
     #             if name[:6] == model_name_cand:
     #                 root = os.path.join(model_parent, name)
     # # TS
-    checkpoint = 15000 #6000
+    checkpoint = 22000 #6000
     if checkpoint==-1:
         models = [file for file in os.listdir(load_run) if model_name_include in file]
         # print("root: ", root)
@@ -138,7 +138,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
         # print("models: ", models)
         model = models[-1]
     else:
-        model = "model_{}.pt".format(checkpoint) 
+        model = "model_{}.pt".format(checkpoint)
 
     load_path = os.path.join(load_run, model)
     return load_path
@@ -180,7 +180,7 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
         # if not args.delay and not args.resume and not args.use_camera and args.headless: # if train from scratch
         #     env_cfg.domain_rand.action_delay = True
         #     env_cfg.domain_rand.action_curr_step = env_cfg.domain_rand.action_curr_step_scratch
-        
+
         # MBRL
         if args.num_envs is not None:
             env_cfg.env.num_envs = args.num_envs
@@ -232,7 +232,7 @@ def get_args():
         {"name": "--run_name", "type": str,  "help": "Name of the run. Overrides config file if provided."},
         {"name": "--load_run", "type": str,  "help": "Name of the run to load when resume=True. If -1: will load the last run. Overrides config file if provided."},
         {"name": "--checkpoint", "type": int, "default": -1, "help": "Saved model checkpoint number. If -1: will load the last checkpoint. Overrides config file if provided."},
-        
+
         {"name": "--headless", "action": "store_true", "default": False, "help": "Force display off at all times"},
         {"name": "--horovod", "action": "store_true", "default": False, "help": "Use horovod for multi-gpu training"},
         {"name": "--rl_device", "type": str, "default": "cuda:0", "help": 'Device used by the RL algorithm, (cpu, gpu, cuda:0, cuda:1 etc..)'},
@@ -245,7 +245,7 @@ def get_args():
         {"name": "--cols", "type": int, "help": "num_cols"},
         {"name": "--debug", "action": "store_true", "default": False, "help": "Disable wandb logging"},
         {"name": "--proj_name", "type": str,  "default": "hexapod", "help": "run folder name."},
-        
+
         {"name": "--teacher", "type": str, "help": "Name of the teacher policy to use when distilling"},
         {"name": "--exptid", "type": str, "help": "exptid"},
         {"name": "--resumeid", "type": str, "help": "exptid"},
@@ -288,7 +288,7 @@ def get_args():
 #         # assumes LSTM: TODO add GRU
 #         exporter = PolicyExporterLSTM(actor_critic)
 #         exporter.export(path)
-#     else: 
+#     else:
 #         os.makedirs(path, exist_ok=True)
 #         path = os.path.join(path, name+".pt")
 #         model = copy.deepcopy(actor_critic.actor).to('cpu')
@@ -299,7 +299,7 @@ def export_policy_as_jit(actor_critic, path):
         # assumes LSTM: TODO add GRU
         exporter = PolicyExporterLSTM(actor_critic)
         exporter.export(path)
-    else: 
+    else:
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'policy_1.pt')
         model = copy.deepcopy(actor_critic.actor).to('cpu')
@@ -327,7 +327,7 @@ class PolicyExporterLSTM(torch.nn.Module):
     def reset_memory(self):
         self.hidden_state[:] = 0.
         self.cell_state[:] = 0.
- 
+
     def export(self, path):
         os.makedirs(path, exist_ok=True)
         path = os.path.join(path, 'policy_lstm_1.pt')
@@ -335,7 +335,7 @@ class PolicyExporterLSTM(torch.nn.Module):
         traced_script_module = torch.jit.script(self)
         traced_script_module.save(path)
 
-    
+
 # overide gymutil
 def parse_device_str(device_str):
     # defaults

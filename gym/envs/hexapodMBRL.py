@@ -441,8 +441,17 @@ class HexapodRobot(BaseTask):
         """ Check if environments need to be reset
         """
         self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
-        # print("reset init: ", self.reset_buf)
-        # vel_error = self.base_lin_vel[:, 0] - self.commands[:, 0]
+        
+        # # 选出 terrain_levels < 3 的环境
+        # valid_envs = self.terrain_levels < 3  # shape: (num_envs,)
+
+        # # 只有 valid_envs 中的环境才检查 termination_contact_indices 的接触力
+        # contact_forces_norm = torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1)
+        # contact_violation = torch.any(contact_forces_norm > 1.0, dim=1)
+
+        # # 只对 terrain_levels < 3 的环境应用该条件
+        # self.reset_buf = torch.where(valid_envs, contact_violation, torch.zeros_like(contact_violation))
+
         vel_error = self.base_lin_vel[:, 1] - self.commands[:, 1]
         self.vel_violate = ((vel_error > 1.5) & (self.commands[:, 0] < 0.)) | ((vel_error < -1.5) & (self.commands[:, 0] > 0.))
         # self.vel_violate = ((vel_error > 0.03) & (self.commands[:, 1] < 0.)) | ((vel_error < -0.03) & (self.commands[:, 1] > 0.))
@@ -677,8 +686,9 @@ class HexapodRobot(BaseTask):
             self.terrain = Terrain(self.cfg.terrain, self.num_envs)
             # self.terrain = HTerrain(self.cfg.terrain, self.num_envs)
         if mesh_type=='plane':
-            self.terrain = Terrain(self.cfg.terrain, self.num_envs)
             self._create_ground_plane()
+            # if self.cfg.terrain.curriculum:
+            #     pass
         elif mesh_type=='heightfield':
             self._create_heightfield()
         elif mesh_type=='trimesh':
@@ -1062,8 +1072,8 @@ class HexapodRobot(BaseTask):
                                                    torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level),
                                                    torch.clip(self.terrain_levels[env_ids], 0)) # (the minumum level is zero)
         
-        # if True:
-        #     self.terrain_levels = torch.ones((self.num_envs,), device=self.device).long()
+        if True:
+            self.terrain_levels = torch.ones((self.num_envs,), device=self.device).long() * 3
             # 制定terrain_levels为2
             # self.terrain_levels = torch.ones((self.num_envs,), device=self.device).long() * 7
             
@@ -1938,6 +1948,23 @@ class HexapodRobot(BaseTask):
             return torch.exp(-(ang_error)/(self.cfg.rewards.tracking_sigma*10))
             # return 0
 
+    def _reward_x_offset_penalty(self):
+        """
+        计算机器人在 x 方向的偏移惩罚。
+        机器人应该沿着 y 方向前进，因此希望它的 x 位置保持稳定。
+        """
+        # 获取机器人当前的 x 位置
+        current_x_pos = self.root_states[:, 0]  # shape: (num_envs,)
+
+        # 获取每个环境的 x 方向原点
+        x_origins = self.env_origins[:, 0]  # shape: (num_envs,)
+ 
+        # 计算 x 方向的偏移量（绝对值）
+        x_offset = torch.abs(current_x_pos - x_origins)
+
+        return x_offset
+
+
     def _reward_feet_air_time(self):
         # Reward long steps
         # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
@@ -2340,8 +2367,8 @@ class HexapodRobot(BaseTask):
         # foot_pos_base = quat_rotate_inverse(self.base_quat.repeat(4, 1), foot_pos)
         # foot_pos_base = torch.reshape(foot_pos_base,(self.num_envs,4,-1))
         # foot_heights = foot_pos_base[:,:,2]
-        if (self.common_step_counter <= 5) | (self.common_step_counter > self.max_episode_length):
-            return torch.zeros(self.num_envs, device=self.device)
+        # if (self.common_step_counter <= 5) | (self.common_step_counter > self.max_episode_length):
+        #     return torch.zeros(self.num_envs, device=self.device)
 
         if self.cfg.terrain.mesh_type == 'plane':
             foot_heights = self.rigid_body_pos[:, self.feet_indices, 2]

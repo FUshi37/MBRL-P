@@ -1,0 +1,3 @@
+1. pd给软一些
+2. only_positive给true
+3. reset时最好不要随机化关节角度
