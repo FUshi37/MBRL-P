@@ -19,7 +19,7 @@ def plot_velocity():
     data = read_velocity_data("clip_lin_vel_y.txt")
     plt.figure(figsize=(10, 5))
     plt.plot(data, 'b-', label='Y方向速度 (m/s)')
-    plt.ylim(-0.1, 0.1)  # <--- 关键行
+    plt.ylim(-0.1, 0.2)  # <--- 关键行
     plt.xlabel("步数")
     plt.ylabel("速度 (m/s)")
     plt.title("Y方向速度跟踪曲线")

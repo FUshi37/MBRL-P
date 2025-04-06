@@ -61,6 +61,31 @@ import collections
 from dreamer import tools
 import datetime
 import uuid
+
+import gc
+
+def print_memory_usage():
+    total_memory = 0
+    tensor_list = []
+
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if obj.is_cuda:
+                    mem_size = obj.element_size() * obj.nelement() / 1024 ** 2  # MB
+                    total_memory += mem_size
+                    tensor_list.append((type(obj), obj.size(), mem_size))
+
+        except Exception as e:
+            pass  # 防止一些非张量对象报错
+
+    # 按照显存占用从大到小排序
+    tensor_list.sort(key=lambda x: x[2], reverse=True)
+
+    print(f"Total CUDA memory allocated: {total_memory:.2f} MB")
+    for t in tensor_list:
+        print(f"Tensor Type: {t[0]}, Size: {t[1]}, Memory: {t[2]:.2f} MB")
+
 class WMPRunner:
 
     def __init__(self,
@@ -259,7 +284,7 @@ class WMPRunner:
         }
         if(self.env.cfg.depth.use_camera):
             wm_obs["image"] = torch.zeros(((self.env.num_envs,) + self.env.cfg.depth.resized + (1,)), device=self._world_model.device)
-
+        # print("wm_obs: ", wm_obs["prop"].shape)
         wm_metrics = None
         self.wm_update_interval = self.env.cfg.depth.update_interval
         wm_action_history = torch.zeros(size=(self.env.num_envs, self.wm_update_interval, self.env.num_actions),
@@ -426,7 +451,11 @@ class WMPRunner:
             if(it == 0):
                 # os.system("cp ./legged_gym/envs/a1/a1_amp_config.py " + self.log_dir + "/")
                 os.system("cp ./gym/envs/hexapodMBRL_config.py " + self.log_dir + "/")
-
+            # for key, value in wm_obs.items():
+            #     print(f"wm_obs[{key}].shape: {value.shape}")
+            # for key, value in self.wm_buffer.items():
+            #     print(f"wm_buffer[{key}].shape: {value.shape}")
+            # print_memory_usage()
         self.current_learning_iteration += num_learning_iterations
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
 

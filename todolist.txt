@@ -119,3 +119,23 @@ base height 和 measure_heights
 
 79. 降低目标速度为0.055，改进地形生成代码。
 52/53th 能够比较好的在复杂地形上行走 'Hexapod_terrain_055speed'
+
+80. x_offset_penalty = -5.0
+    smooth_velocity = -5.0
+    continuous_movement = -5.0
+    terrain>=3时 base_link碰撞不再reset
+    加入dof_vel项奖励 -5.0e-3
+    更改neuroant.urdf的vel limits,降低为13
+    微调update_terrain的要求
+54th 训到12k terrain_level没有再明显上升的趋势，停止训练
+
+81. 加入视觉1024个环境跑不动，修改内存
+82. 视觉far_clip从2改到0.5。 修改measure_height_forward的范围。 depth.update_interval改成10，增大了5倍。
+
+83. 改回没有视觉，碰撞惩罚加ft
+
+55th bule-green
+
+84. 足端腾空时y负方向速度惩罚。 改大z_lin_vel惩罚和ang_vel_xy惩罚。
+85. 视觉砍半
+

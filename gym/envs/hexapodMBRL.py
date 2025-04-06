@@ -11,7 +11,9 @@ from gym import GYM_ROOT_DIR, envs
 from time import time
 from warnings import WarningMessage
 import numpy as np
+# 在环境初始化前设置
 import os
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:16,garbage_collection_threshold:0.8"
 import json
 
 from isaacgym.torch_utils import *
@@ -32,6 +34,30 @@ from gym.envs.hexapodMBRL_config import MBRLHexapodCfg
 from rsl_rl.datasets.motion_loader import AMPLoader
 import cv2
 from gym.utils.helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
+import torch
+import gc
+
+def print_memory_usage():
+    total_memory = 0
+    tensor_list = []
+
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                if obj.is_cuda:
+                    mem_size = obj.element_size() * obj.nelement() / 1024 ** 2  # MB
+                    total_memory += mem_size
+                    tensor_list.append((type(obj), obj.size(), mem_size))
+
+        except Exception as e:
+            pass  # 防止一些非张量对象报错
+
+    # 按照显存占用从大到小排序
+    tensor_list.sort(key=lambda x: x[2], reverse=True)
+
+    print(f"Total CUDA memory allocated: {total_memory:.2f} MB")
+    for t in tensor_list:
+        print(f"Tensor Type: {t[0]}, Size: {t[1]}, Memory: {t[2]:.2f} MB")
 
 # no used
 COM_OFFSET = torch.tensor([0.012731, 0.002186, 0.000515])
@@ -40,6 +66,18 @@ HIP_OFFSETS = torch.tensor([
     [0.183, -0.047, 0.],
     [-0.183, 0.047, 0.],
     [-0.183, -0.047, 0.]]) + COM_OFFSET
+
+def memory_monitor(func):
+    def wrapper(*args, **kwargs):
+        print(f"\n=== 进入 {func.__name__} 前 ===")
+        print(torch.cuda.memory_summary(abbreviated=True))
+        
+        result = func(*args, **kwargs)
+        
+        print(f"\n=== 离开 {func.__name__} 后 ===")
+        print(torch.cuda.memory_summary(abbreviated=True))
+        return result
+    return wrapper
 
 def quat_to_euler(quat):
     """
@@ -61,43 +99,6 @@ def quat_to_euler(quat):
     
     return roll_x, pitch_y, yaw_z # in radians
 
-class VideoRecorder:
-    def __init__(self, gym, sim, envs, cam_handle, fps=20, save_path="videos"):
-        self.gym = gym
-        self.sim = sim
-        self.envs = envs
-        self.cam_handle = cam_handle
-        self.fps = fps
-        self.frames = []
-        self.save_path = save_path
-        os.makedirs(save_path, exist_ok=True)
-
-    def record_frame(self):
-        """ 获取Isaac Gym中的相机图像并存入帧列表 """
-        frame = self.gym.get_camera_image(self.sim, self.envs[0], self.cam_handle, gymapi.IMAGE_COLOR)
-        frame = frame.reshape((frame.shape[0], frame.shape[1], 4))  # RGBA
-        frame = frame[:, :, :3]  # 仅保留RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)  # 转换为BGR，符合OpenCV格式
-        self.frames.append(frame)
-
-    def save_video(self, filename="output.mp4"):
-        """ 存储帧并生成视频 """
-        if len(self.frames) == 0:
-            print("[Warning] No frames recorded!")
-            return None
-
-        height, width, _ = self.frames[0].shape
-        video_path = os.path.join(self.save_path, filename)
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(video_path, fourcc, self.fps, (width, height))
-
-        for frame in self.frames:
-            out.write(frame)
-        out.release()
-
-        print(f"Video saved at {video_path}")
-        return video_path
-
 class HexapodRobot(BaseTask): 
     def __init__(self, cfg: MBRLHexapodCfg, sim_params, physics_engine, sim_device, headless):
         """ Parses the provided config file,
@@ -112,6 +113,17 @@ class HexapodRobot(BaseTask):
             device_id (int): 0, 1, ...
             headless (bool): Run without rendering if True
         """
+        # print(f"\n=== 进入 step 前 ===")
+        #         # 打印当前分配情况
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+
+        # # 获取详细统计
+        # print(torch.cuda.memory_stats())
+
+        # # 关键指标：
+        # print(f"已分配内存: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
+        # print(f"最大缓存内存: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        # print(f"保留内存: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
         self.cfg = cfg
         
         self.sim_params = sim_params
@@ -127,23 +139,22 @@ class HexapodRobot(BaseTask):
                                                               interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
 
         self.velocity_ema_list = []
-        self.EMA_LEN = 50
+        self.EMA_LEN = 25
         
         if self.cfg.terrain.is_plane:
             self.cfg.env.height_dim = 0
             self.cfg.depth.use_camera = False
+        if self.cfg.depth.use_camera:
+            self.cfg.depth.update_interval = 10
+            self.cfg.terrain.num_cols = 2
+            self.cfg.terrain.terrain_length = 2.
+            self.cfg.terrain.terrain_width = 2.
         
         # if not self.headless:
         #     self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)   
          # 初始化视频录制器（只在第一个环境录制） 
         if self.headless:
-            self.video_recorder = VideoRecorder(
-                self.gym, self.sim, [self.envs[0]], self.cam_handles[0], 
-                fps=20, save_path=os.path.join(currentdir, "videos")
-            )
-            self.record_video = True
-            self.video_frames = []
-            self.video_interval = 200  # 每200步保存一次视频
+            pass
         else:
             self.record_video = False
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)   
@@ -181,23 +192,73 @@ class HexapodRobot(BaseTask):
         # self.motorcommand = signal
         
         self.motorcommand_index = -1
+        
+        # print("\n==== 初始化后显存 ====")
+        # print(f"\n=== 进入 init 后 ===")
+        # # 打印当前分配情况
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
 
+        # # 获取详细统计
+        # print(torch.cuda.memory_stats())
+
+        # # 关键指标：
+        # print(f"已分配内存: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
+        # print(f"最大缓存内存: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        # print(f"保留内存: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
+
+    #@memory_monitor
     def reset(self):
         """ Reset all robots"""
+        # print(f"\n=== 进入 step 前 ===")
+        #         # 打印当前分配情况
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+
+        # # 获取详细统计
+        # print(torch.cuda.memory_stats())
+
+        # # 关键指标：
+        # print(f"已分配内存: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
+        # print(f"最大缓存内存: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        # print(f"保留内存: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
+        torch.cuda.empty_cache()
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
+        
         if self.cfg.env.include_history_steps is not None:
             self.obs_buf_history.reset(
                 torch.arange(self.num_envs, device=self.device),
                 self.obs_buf[torch.arange(self.num_envs, device=self.device)])
         obs, privileged_obs, _, _, _, _ = self.step(torch.zeros(self.num_envs, self.num_actions, device=self.device, requires_grad=False))
+        # print(f"\n=== 进入 reset 后 ===")
+        #         # 打印当前分配情况
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+
+        # # 获取详细统计
+        # print(torch.cuda.memory_stats())
+
+        # # 关键指标：
+        # print(f"已分配内存: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
+        # print(f"最大缓存内存: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        # print(f"保留内存: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
         return obs, privileged_obs
     
+    #@memory_monitor
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
 
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
+        # print(f"\n=== 进入 step 前 ===")
+        #         # 打印当前分配情况
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+
+        # # 获取详细统计
+        # print(torch.cuda.memory_stats())
+
+        # # 关键指标：
+        # print(f"已分配内存: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
+        # print(f"最大缓存内存: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        # print(f"保留内存: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
         self.global_counter += 1
         self.total_env_steps_counter += 1
 
@@ -231,18 +292,6 @@ class HexapodRobot(BaseTask):
         
         # step physics and render each frame
         self.render()
-        # # 录制视频
-        # if self.global_counter % (1000 * 1) == 0:
-        #     self.start_record = True
-        # if self.record_video and (self.global_counter % 2 == 0) and self.start_record:  # 降低帧率至10fps
-        #     self.video_recorder.record_frame()
-        # # 保存视频逻辑
-        # if self.record_video and (self.global_counter % self.video_interval == 0) and self.start_record:
-        #     video_filename = f"video_step_{self.global_counter}.mp4"
-        #     video_path = self.video_recorder.save_video(video_filename)
-        #     self.start_record = False
-        #     # 重置帧缓冲区
-        #     self.video_recorder.frames = []
             
         for _ in range(self.cfg.control.decimation):
             if (self.cfg.domain_rand.randomize_action_latency and _ < action_latency):
@@ -286,7 +335,18 @@ class HexapodRobot(BaseTask):
         # 在extras中添加监控指标
         self.extras["metrics/negative_force_ratio"] = torch.mean((self.sensor_forces[:, :, 2] < 0).float())
         self.extras["metrics/foot_velocity_z"] = torch.mean(self.rigid_body_lin_vel[:, self.feet_indices, 2].abs())
-        
+        # print(f"\n=== 进入 step 后 ===")
+        # # 打印当前分配情况
+        # print(torch.cuda.memory_summary(device=None, abbreviated=False))
+
+        # # 获取详细统计
+        # print(torch.cuda.memory_stats())
+
+        # # 关键指标：
+        # print(f"已分配内存: {torch.cuda.memory_allocated()/1024**2:.2f} MB")
+        # print(f"最大缓存内存: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
+        # print(f"保留内存: {torch.cuda.memory_reserved()/1024**2:.2f} MB")
+
         return policy_obs, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras, reset_env_ids
 
     def normalize_depth_image(self, depth_image):
@@ -307,6 +367,7 @@ class HexapodRobot(BaseTask):
         # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
         return depth_image[:-2, 4:-4]
     
+    #@memory_monitor
     def update_depth_buffer(self):
         if not self.cfg.depth.use_camera:
             return
@@ -360,6 +421,7 @@ class HexapodRobot(BaseTask):
 
         self.episode_length_buf += 1
         self.common_step_counter += 1
+        self.prev_base_lin_vel[:] = self.base_lin_vel[:].clone()
 
         # prepare quantities
         self.base_quat[:] = self.root_states[:, 3:7]
@@ -370,14 +432,6 @@ class HexapodRobot(BaseTask):
         # the original code call _post_physics_step_callback before compute reward, which seems unreasonable. e.g., the
         # current action follows the current commands, while _post_physics_step_callback may resample command, resulting a low reward.
         self._post_physics_step_callback()
-
-        # current_vel_xy = self.base_lin_vel.clone()
-        # if len(self.velocity_ema_list) < self.EMA_LEN:
-        #     self.velocity_ema_list.append(current_vel_xy)
-        # else:
-        #     self.velocity_ema_list.pop(0)
-        #     self.velocity_ema_list.append(current_vel_xy)
-        # self.velocity_ema = torch.stack(self.velocity_ema_list, dim=0).mean(dim=0)
         
         current_vel = self.base_lin_vel[:, :3]  # 获取当前线速度
         self.velocity_ema_buffer = torch.cat([
@@ -385,11 +439,6 @@ class HexapodRobot(BaseTask):
             current_vel.unsqueeze(1)
         ], dim=1)
         self.velocity_ema = torch.mean(self.velocity_ema_buffer, dim=1)
-        # self.yaw_ema_buffer = torch.cat([
-        #     self.yaw_ema_buffer[:, 1:, :],
-        #     quat_to_euler(self.base_quat[:])[2].unsqueeze(1)
-        # ], dim=1)
-        # self.yaw_ema = torch.man(self.yaw_ema_buffer, dim=1)
             
         # compute observations, rewards, resets, ...
         self.check_termination()
@@ -420,7 +469,7 @@ class HexapodRobot(BaseTask):
 
         if self.viewer and self.enable_viewer_sync and self.debug_viz:
             # self._draw_debug_vis()
-            if self.cfg.depth.use_camera:
+            if self.cfg.depth.use_camera and True:
                 window_name = "Depth Image"
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
                 cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].cpu().numpy() + 0.5)
@@ -440,17 +489,17 @@ class HexapodRobot(BaseTask):
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        # self.reset_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         
-        # # 选出 terrain_levels < 3 的环境
-        # valid_envs = self.terrain_levels < 3  # shape: (num_envs,)
+        # 选出 terrain_levels < 3 的环境
+        valid_envs = self.terrain_levels < 3  # shape: (num_envs,)
 
-        # # 只有 valid_envs 中的环境才检查 termination_contact_indices 的接触力
-        # contact_forces_norm = torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1)
-        # contact_violation = torch.any(contact_forces_norm > 1.0, dim=1)
+        # 只有 valid_envs 中的环境才检查 termination_contact_indices 的接触力
+        contact_forces_norm = torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1)
+        contact_violation = torch.any(contact_forces_norm > 1.0, dim=1)
 
-        # # 只对 terrain_levels < 3 的环境应用该条件
-        # self.reset_buf = torch.where(valid_envs, contact_violation, torch.zeros_like(contact_violation))
+        # 只对 terrain_levels < 3 的环境应用该条件
+        self.reset_buf = torch.where(valid_envs, contact_violation, torch.zeros_like(contact_violation))
 
         vel_error = self.base_lin_vel[:, 1] - self.commands[:, 1]
         self.vel_violate = ((vel_error > 1.5) & (self.commands[:, 0] < 0.)) | ((vel_error < -1.5) & (self.commands[:, 0] > 0.))
@@ -521,8 +570,6 @@ class HexapodRobot(BaseTask):
         self.reset_buf[env_ids] = 1
         self.velocity_ema_buffer[env_ids] = 0  # 完全重置
         self.velocity_ema[env_ids] = 0
-        self.yaw_ema_buffer[env_ids] = 0
-        self.yaw_ema[env_ids] = 0
         self.smooth_air_time = torch.zeros_like(self.feet_air_time, device=self.device)
         self.feet_contact_time[env_ids] = 0.
         mask = self.stability_counter[env_ids] >= self.cfg.terrain.curriculum_counter
@@ -648,31 +695,6 @@ class HexapodRobot(BaseTask):
             self.obs_buf = self.privileged_obs_buf[:, 3:]
         else:
             self.obs_buf = torch.clone(self.privileged_obs_buf)
-
-    def get_amp_observations(self):
-        joint_pos = self.dof_pos
-        # foot_pos = self.foot_positions_in_base_frame(self.dof_pos).to(self.device)
-        base_lin_vel = self.base_lin_vel
-        base_ang_vel = self.base_ang_vel
-        joint_vel = self.dof_vel
-        # z_pos = self.root_states[:, 2:3]
-        # if (self.cfg.terrain.measure_heights):
-        #     z_pos = z_pos - torch.mean(self.measured_heights, dim=-1, keepdim=True)
-        # return torch.cat((joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, z_pos), dim=-1)
-        return torch.cat((joint_pos, base_lin_vel, base_ang_vel, joint_vel), dim=-1)
-
-    def get_full_amp_observations(self):
-        joint_pos = self.dof_pos
-        foot_pos = self.foot_positions_in_base_frame(self.dof_pos).to(self.device)
-        base_lin_vel = self.base_lin_vel
-        base_ang_vel = self.base_ang_vel
-        joint_vel = self.dof_vel
-        pos = self.root_states[:, :3]
-        if (self.cfg.terrain.measure_heights):
-            pos[:, 2:3] = pos[:, 2:3] - torch.mean(self.measured_heights, dim=-1, keepdim=True)
-        rot = self.root_states[:, 3:7]
-        foot_vel = torch.zeros_like(foot_pos)
-        return torch.cat((pos, rot, joint_pos, foot_pos, base_lin_vel, base_ang_vel, joint_vel, foot_vel), dim=-1)
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments
@@ -1041,8 +1063,8 @@ class HexapodRobot(BaseTask):
         current_yaw = quat_to_euler(self.base_quat)[2][env_ids]
         yaw_diff = torch.abs(target_yaw - current_yaw)
         MOVE_UP_CONDITIONS = {
-            'x_error': 0.05,      # x方向允许10%的相对误差或10cm绝对误差
-            'y_error': (torch.norm(self.commands[env_ids, :2], dim=1)*self.max_episode_length_s*0.85) - self.terrain_levels[env_ids]/50,      # y方向允许15%的相对误差
+            'x_error': 0.05,      # x方向允许10%的相对误差或20cm绝对误差
+            'y_error': (torch.norm(self.commands[env_ids, :2], dim=1)*self.max_episode_length_s*0.85) - self.terrain_levels[env_ids]/30,      # y方向允许15%的相对误差
             'yaw_error': 0.4      # 偏航角允许10%的误差
         }
         
@@ -1302,6 +1324,7 @@ class HexapodRobot(BaseTask):
         self.antidragging_last_contacts = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.bool, device=self.device, requires_grad=False)
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        self.prev_base_lin_vel = torch.zeros_like(self.base_lin_vel)
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
         if self.cfg.terrain.measure_heights:
             self.height_points = self._init_height_points()
@@ -1311,8 +1334,6 @@ class HexapodRobot(BaseTask):
         self.velocity_ema_buffer = torch.zeros(self.num_envs, self.EMA_LEN, 3,  # 假设存储线速度的xyz三个维度
             device=self.device, requires_grad=False)
         self.velocity_ema = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
-        self.yaw_ema_buffer = torch.zeros(self.num_envs, self.EMA_LEN, 1, device=self.device, requires_grad=False)
-        self.yaw_ema = torch.zeros(self.num_envs, 1, device=self.device, requires_grad=False)
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
@@ -1321,16 +1342,6 @@ class HexapodRobot(BaseTask):
             angle = self.cfg.init_state.default_joint_angles[name]
             self.default_dof_pos[i] = angle
             found = False
-            # for dof_name in self.cfg.control.stiffness.keys():
-            #     if dof_name in name:
-            #         self.p_gains[i] = self.cfg.control.stiffness[dof_name]
-            #         self.d_gains[i] = self.cfg.control.damping[dof_name]
-            #         found = True
-            # if not found:
-            #     self.p_gains[i] = 0.
-            #     self.d_gains[i] = 0.
-            #     if self.cfg.control.control_type in ["P", "V"]:
-            #         print(f"PD gain of joint {name} were not defined, setting them to zero")
             self.p_gains[i] = self.cfg.control.stiffness['joint']
             self.d_gains[i] = self.cfg.control.damping['joint']
         self.default_dof_pos = self.default_dof_pos.unsqueeze(0)
@@ -1356,31 +1367,31 @@ class HexapodRobot(BaseTask):
         return p_mult * self.p_gains, d_mult * self.d_gains
 
 
-    def foot_position_in_hip_frame(self, angles, l_hip_sign=1):
-        theta_ab, theta_hip, theta_knee = angles[:, 0], angles[:, 1], angles[:, 2]
-        l_up = 0.2
-        l_low = 0.2
-        l_hip = 0.08505 * l_hip_sign
-        leg_distance = torch.sqrt(l_up**2 + l_low**2 +
-                                2 * l_up * l_low * torch.cos(theta_knee))
-        eff_swing = theta_hip + theta_knee / 2
+    # def foot_position_in_hip_frame(self, angles, l_hip_sign=1):
+    #     theta_ab, theta_hip, theta_knee = angles[:, 0], angles[:, 1], angles[:, 2]
+    #     l_up = 0.2
+    #     l_low = 0.2
+    #     l_hip = 0.08505 * l_hip_sign
+    #     leg_distance = torch.sqrt(l_up**2 + l_low**2 +
+    #                             2 * l_up * l_low * torch.cos(theta_knee))
+    #     eff_swing = theta_hip + theta_knee / 2
 
-        off_x_hip = -leg_distance * torch.sin(eff_swing)
-        off_z_hip = -leg_distance * torch.cos(eff_swing)
-        off_y_hip = l_hip
+    #     off_x_hip = -leg_distance * torch.sin(eff_swing)
+    #     off_z_hip = -leg_distance * torch.cos(eff_swing)
+    #     off_y_hip = l_hip
 
-        off_x = off_x_hip
-        off_y = torch.cos(theta_ab) * off_y_hip - torch.sin(theta_ab) * off_z_hip
-        off_z = torch.sin(theta_ab) * off_y_hip + torch.cos(theta_ab) * off_z_hip
-        return torch.stack([off_x, off_y, off_z], dim=-1)
+    #     off_x = off_x_hip
+    #     off_y = torch.cos(theta_ab) * off_y_hip - torch.sin(theta_ab) * off_z_hip
+    #     off_z = torch.sin(theta_ab) * off_y_hip + torch.cos(theta_ab) * off_z_hip
+    #     return torch.stack([off_x, off_y, off_z], dim=-1)
 
-    def foot_positions_in_base_frame(self, foot_angles):
-        foot_positions = torch.zeros_like(foot_angles)
-        for i in range(4):
-            foot_positions[:, i * 3:i * 3 + 3].copy_(
-                self.foot_position_in_hip_frame(foot_angles[:, i * 3: i * 3 + 3], l_hip_sign=(-1)**(i)))
-        foot_positions = foot_positions + HIP_OFFSETS.reshape(12,).to(self.device)
-        return foot_positions
+    # def foot_positions_in_base_frame(self, foot_angles):
+    #     foot_positions = torch.zeros_like(foot_angles)
+    #     for i in range(4):
+    #         foot_positions[:, i * 3:i * 3 + 3].copy_(
+    #             self.foot_position_in_hip_frame(foot_angles[:, i * 3: i * 3 + 3], l_hip_sign=(-1)**(i)))
+    #     foot_positions = foot_positions + HIP_OFFSETS.reshape(12,).to(self.device)
+    #     return foot_positions
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -1565,16 +1576,6 @@ class HexapodRobot(BaseTask):
         self.randomized_added_masses = torch.zeros(self.num_envs, 1, device=self.device, requires_grad=False)
         self.randomized_com_pos = torch.zeros(self.num_envs, 3, device=self.device, requires_grad=False)
 
-        # if(self.cfg.depth.use_camera):
-        #     # All robots of Tilt and Crawl needs depth camera
-        #     self.cfg.depth.camera_num_envs = min(self.cfg.depth.camera_num_envs, self.num_envs)
-        #     self.depth_index_without_crawl_tilt = np.random.choice(range(self.tilt_start_idx), self.cfg.depth.camera_num_envs
-        #                                                      - (self.crawl_end_idx - self.tilt_start_idx), replace=False)
-        #     self.depth_index_without_crawl_tilt = np.sort(self.depth_index_without_crawl_tilt).astype(np.int)
-        #     self.depth_index = np.concatenate((self.depth_index_without_crawl_tilt, range(self.tilt_start_idx, self.crawl_end_idx))).astype(np.int)
-        #     self.depth_index_inverse = -np.ones(self.num_envs, dtype=np.int)
-        #     for i in range(len(self.depth_index)):
-        #         self.depth_index_inverse[self.depth_index[i]] = i
         self.depth_index = np.arange(0, self.num_envs)
         self.depth_index_inverse = -np.ones(self.num_envs, dtype=np.int)
         for i in range(len(self.depth_index)):
@@ -1670,8 +1671,10 @@ class HexapodRobot(BaseTask):
         sphere_geom = gymutil.WireframeSphereGeometry(0.02, 4, 4, None, color=(1, 1, 0))
         for i in range(self.num_envs):
             base_pos = (self.root_states[i, :3]).cpu().numpy()
-            heights = self.measured_heights[i].cpu().numpy()
-            height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()
+            # heights = self.measured_heights[i].cpu().numpy()
+            heights = self.measured_forward_heights[i].cpu().numpy()
+            # height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.height_points[i]).cpu().numpy()
+            height_points = quat_apply_yaw(self.base_quat[i].repeat(heights.shape[0]), self.forward_height_points[i]).cpu().numpy()
             for j in range(heights.shape[0]):
                 x = height_points[j, 0] + base_pos[0]
                 y = height_points[j, 1] + base_pos[1]
@@ -1799,6 +1802,14 @@ class HexapodRobot(BaseTask):
     def _reward_ang_vel_xy(self):
         # Penalize xy axes base angular velocity
         return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
+    
+    def _reward_ang_xy(self):
+        roll = quat_to_euler(self.base_quat)[0]
+        pitch = quat_to_euler(self.base_quat)[1]
+        threshold = 5 * (np.pi / 180)  # 5° 转换为弧度
+        roll_penalty = torch.square(torch.clamp_min(torch.abs(roll) - threshold, 0))
+        pitch_penalty = torch.square(torch.clamp_min(torch.abs(pitch) - threshold, 0))
+        return roll_penalty + pitch_penalty  # 只有超出阈值才有惩罚
 
     def _reward_orientation(self):
         # Penalize non flat base orientation
@@ -1854,6 +1865,7 @@ class HexapodRobot(BaseTask):
     def _reward_dof_vel_limits(self):
         # Penalize dof velocities too close to the limit
         # clip to max error = 1 rad/s per joint to avoid huge penalties
+        # print("dof_vel: ", torch.max(self.dof_vel[0]))
         return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
 
     def _reward_torque_limits(self):
@@ -1875,7 +1887,7 @@ class HexapodRobot(BaseTask):
         clip_lin_vel = lin_vel
         
         lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - clip_lin_vel), dim=1)
-        # print("clip_lin_vel: ", clip_lin_vel)
+        # print("clip_lin_vel: ", clip_lin_vel[0])
         # print("vel_error: ", lin_vel_error)
         
         # 记录第一个环境的y方向速度（每次写入文件）
@@ -1964,65 +1976,80 @@ class HexapodRobot(BaseTask):
 
         return x_offset
 
+    def _reward_smooth_velocity(self):
+        velocity_change = torch.norm(self.base_lin_vel - self.prev_base_lin_vel, dim=-1)
+        return velocity_change
+    
+    def _reward_continuous_movement(self):
+        """
+        让机器人持续运动，防止停滞后突然加速。
+        """
+        min_speed = 0.015  # 允许的最小速度
+        speed = torch.norm(self.base_lin_vel, dim=-1)
+        # 当速度小于min_speed时，奖励为speed/min_speed，否则为0
+        reward = torch.where(speed < min_speed, speed / min_speed, torch.tensor(0.0, device=self.device))
+        return reward
 
     def _reward_feet_air_time(self):
-        # Reward long steps
-        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
-        # 每次reset后最开始两个step不计算此reward
-        
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.2
-        # contact = self.sensor_forces[:, :, 2] > 1.2
-        # print("sensor force: ", self.contact_forces[:, self.feet_indices, 2])
-        # print("max sensor force: ", torch.max(self.sensor_forces[:, :, 2]))
-        # print("contact: ", contact)
-        self.contact_filt = torch.logical_or(contact, self.last_contacts)
-        # print("contact filt: ", self.contact_filt)
-        self.last_contacts = contact
-        # print("feed air time: ", self.feet_air_time)
-        # print("contact filt: ", self.contact_filt[0])
-        first_contact = (self.feet_air_time > 0.0) * self.contact_filt
-        # if (self.feet_air_time[0][0] == 0.02) | (self.feet_air_time[0][0] == 0.04) :
-        #     print("feet_air_time: ", self.feet_air_time[0][0], first_contact[0][0])
-        # print("first_contact: ", first_contact)
-        # print("contact filt: ", self.contact_filt)
-        # print("feet_air_time: ", self.feet_air_time)
-        # if first_contact[0][2] == True:
-        #     print("feed air time: ", self.feet_air_time[0][2])
-        # # sum feet air time
-        # self.feet_air_time += self.dt
-        # rew_airTime = torch.sum((self.feet_air_time - 1.0) * first_contact, dim=1) # reward only on first contact with the ground
-        # # print("feet_air_time: ", self.feet_air_time)
-        # # print("feet_air_time: ", torch.max(self.feet_air_time))
-        # # print("first_contact: ", first_contact)
-        # rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01 #no reward for zero command
-        # # print("commands: ", torch.norm(self.commands[:, :2], dim=1) > 0.01)
-        # self.feet_air_time *= ~self.contact_filt
-        # # print("feet ait time: ", self.feet_air_time)
-        # # print("rew_airTime: ", rew_airTime)
-        # return rew_airTime
-        # calculate min feet air times
-        
-        # 独立计算每个腿的奖励
-        # print("feet_air_time: ", self.feet_air_time[0][0])
-        self.feet_air_time += self.dt
-        # print("feet_air_time: ", self.feet_air_time[0][0])
-        # print("first_contact: ", first_contact[0][3])
-        per_leg_reward = (self.feet_air_time - 0.8) * first_contact  # 调整目标时间为0.8秒
-        # if first_contact[0][0] == True:
+        with torch.no_grad():  # 禁用梯度计算
+            # Reward long steps
+            # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
+            # 每次reset后最开始两个step不计算此reward
+            
+            contact = self.contact_forces[:, self.feet_indices, 2] > 1.2
+            # contact = self.sensor_forces[:, :, 2] > 1.2
+            # print("sensor force: ", self.contact_forces[:, self.feet_indices, 2])
+            # print("max sensor force: ", torch.max(self.sensor_forces[:, :, 2]))
+            # print("contact: ", contact)
+            self.contact_filt = torch.logical_or(contact, self.last_contacts)
+            # print("contact filt: ", self.contact_filt)
+            self.last_contacts = contact
+            # print("feed air time: ", self.feet_air_time)
+            # print("contact filt: ", self.contact_filt[0])
+            first_contact = (self.feet_air_time > 0.0) * self.contact_filt
+            # if (self.feet_air_time[0][0] == 0.02) | (self.feet_air_time[0][0] == 0.04) :
+            #     print("feet_air_time: ", self.feet_air_time[0][0], first_contact[0][0])
+            # print("first_contact: ", first_contact)
+            # print("contact filt: ", self.contact_filt)
+            # print("feet_air_time: ", self.feet_air_time)
+            # if first_contact[0][2] == True:
+            #     print("feed air time: ", self.feet_air_time[0][2])
+            # # sum feet air time
+            # self.feet_air_time += self.dt
+            # rew_airTime = torch.sum((self.feet_air_time - 1.0) * first_contact, dim=1) # reward only on first contact with the ground
+            # # print("feet_air_time: ", self.feet_air_time)
+            # # print("feet_air_time: ", torch.max(self.feet_air_time))
+            # # print("first_contact: ", first_contact)
+            # rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01 #no reward for zero command
+            # # print("commands: ", torch.norm(self.commands[:, :2], dim=1) > 0.01)
+            # self.feet_air_time *= ~self.contact_filt
+            # # print("feet ait time: ", self.feet_air_time)
+            # # print("rew_airTime: ", rew_airTime)
+            # return rew_airTime
+            # calculate min feet air times
+            
+            # 独立计算每个腿的奖励
+            # print("feet_air_time: ", self.feet_air_time[0][0])
+            self.feet_air_time += self.dt
+            # print("feet_air_time: ", self.feet_air_time[0][0])
+            # print("first_contact: ", first_contact[0][3])
+            per_leg_reward = (self.feet_air_time - 0.8) * first_contact  # 调整目标时间为0.8秒
+            # if first_contact[0][0] == True:
+                # print("per_leg_reward: ", per_leg_reward[0])
             # print("per_leg_reward: ", per_leg_reward[0])
-        # print("per_leg_reward: ", per_leg_reward[0])
-        min_reward = torch.min(per_leg_reward, dim=1)[0]  # 取最差腿的奖励
-        mean_reward = torch.mean(per_leg_reward, dim=1)    # 或取平均奖励
-        # print("min_reward: ", min_reward)
-        # print("mean_reward: ", mean_reward)
-        # 组合奖励（示例使用最小值+平均值）
-        rew_airTime = 0.1 * mean_reward + 0.9 * min_reward
-        
-        # 非零命令时才奖励
-        rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01
-        
-        # 重置已触地的腿的计时器
-        self.feet_air_time *= ~self.contact_filt # 接触地面时重置
+            min_reward = torch.min(per_leg_reward, dim=1)[0]  # 取最差腿的奖励
+            mean_reward = torch.mean(per_leg_reward, dim=1)    # 或取平均奖励
+            # print("min_reward: ", min_reward)
+            # print("mean_reward: ", mean_reward)
+            # 组合奖励（示例使用最小值+平均值）
+            rew_airTime = 0.1 * mean_reward + 0.9 * min_reward
+            
+            # 非零命令时才奖励
+            rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01
+            
+            # 重置已触地的腿的计时器
+            self.feet_air_time *= ~self.contact_filt # 接触地面时重置
+            del contact, self.contact_filt, first_contact
         
         return rew_airTime
     
@@ -2081,42 +2108,43 @@ class HexapodRobot(BaseTask):
     #     return rew_airTime
     
     def _reward_no_feet_air_time(self):
-        # Penalize too long steps
-        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.2
-        # print("sensor force: ", self.sensor_forces[:, :, 2])
-        self.no_contact_filt = torch.logical_or(contact, self.no_last_contacts)
-        self.no_last_contacts = contact
-        first_contact = (self.no_feet_air_time > 0.0) * self.no_contact_filt
-        # print("first_contact: ", first_contact)
-        # self.no_feet_air_time += self.dt
-        # # rew_airTime = torch.sum((self.feet_air_time - 1.5) * first_contact, dim=1) # reward only on first contact with the ground
-        # # rew_airTime = -torch.clamp(torch.sum(self.feet_air_time - 3.0, dim=1), min=0.0)
-        # rew_airTime = -torch.sum(torch.clamp_min(self.no_feet_air_time - 3.0, 0.0), dim=1)
-        # # print("no_feet_air_time: ", self.no_feet_air_time)
-        # # print("rew_airTime: ", rew_airTime)
-        # rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01 #no reward for zero command
-        # rew_airTime = torch.min(rew_airTime, torch.tensor(0.0, device=self.device))
-        # self.no_feet_air_time *= ~self.contact_filt
-        # return rew_airTime
-        # 惩罚最大time
-        # 更新空中时间
-        # print("no_feet_air_time: ", self.no_feet_air_time[0])
-        self.no_feet_air_time += self.dt
-        # 独立计算每个腿的奖励
-        per_leg_reward = torch.clamp_min(self.no_feet_air_time - 2.5, 0.0)  # 调整目标时间为0.8秒
-        min_reward = torch.max(per_leg_reward, dim=1)[0]  # 取最差腿的奖励
-        mean_reward = torch.mean(per_leg_reward, dim=1)    # 或取平均奖励
-        
-        # 组合奖励（示例使用最小值+平均值）
-        rew_airTime = 0.1 * mean_reward + 0.9 * min_reward
-        
-        # 非零命令时才奖励
-        rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01
-        
-        # 重置已触地的腿的计时器
-        self.no_feet_air_time *= ~self.no_contact_filt
-        
+        with torch.no_grad():
+            # Penalize too long steps
+            # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
+            contact = self.contact_forces[:, self.feet_indices, 2] > 1.2
+            # print("sensor force: ", self.sensor_forces[:, :, 2])
+            self.no_contact_filt = torch.logical_or(contact, self.no_last_contacts)
+            self.no_last_contacts = contact
+            first_contact = (self.no_feet_air_time > 0.0) * self.no_contact_filt
+            # print("first_contact: ", first_contact)
+            # self.no_feet_air_time += self.dt
+            # # rew_airTime = torch.sum((self.feet_air_time - 1.5) * first_contact, dim=1) # reward only on first contact with the ground
+            # # rew_airTime = -torch.clamp(torch.sum(self.feet_air_time - 3.0, dim=1), min=0.0)
+            # rew_airTime = -torch.sum(torch.clamp_min(self.no_feet_air_time - 3.0, 0.0), dim=1)
+            # # print("no_feet_air_time: ", self.no_feet_air_time)
+            # # print("rew_airTime: ", rew_airTime)
+            # rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01 #no reward for zero command
+            # rew_airTime = torch.min(rew_airTime, torch.tensor(0.0, device=self.device))
+            # self.no_feet_air_time *= ~self.contact_filt
+            # return rew_airTime
+            # 惩罚最大time
+            # 更新空中时间
+            # print("no_feet_air_time: ", self.no_feet_air_time[0])
+            self.no_feet_air_time += self.dt
+            # 独立计算每个腿的奖励
+            per_leg_reward = torch.clamp_min(self.no_feet_air_time - 2.5, 0.0)  # 调整目标时间为0.8秒
+            min_reward = torch.max(per_leg_reward, dim=1)[0]  # 取最差腿的奖励
+            mean_reward = torch.mean(per_leg_reward, dim=1)    # 或取平均奖励
+            
+            # 组合奖励（示例使用最小值+平均值）
+            rew_airTime = 0.1 * mean_reward + 0.9 * min_reward
+            
+            # 非零命令时才奖励
+            rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.01
+            
+            # 重置已触地的腿的计时器
+            self.no_feet_air_time *= ~self.no_contact_filt
+            del contact, self.no_contact_filt, first_contact
         return rew_airTime
 
     # def _reward_no_feet_air_time(self):
@@ -2225,116 +2253,33 @@ class HexapodRobot(BaseTask):
         """
         避免机器人后腿拖着走，计算每条腿的触地时间，当触地时间超出阈值后给予惩罚。
         """
-        # 获取足部接触信息
-        # contact = self.sensor_forces[:, :, 2] > 1.0  
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.2
-        # self.contact_filt = torch.logical_or(contact, self.last_contacts)
-        self.contact_filt = torch.logical_or(contact, self.antidragging_last_contacts)
-        # self.last_contacts = contact
-        self.antidragging_last_contacts = contact
-        # 更新足部触地时间
-        # print("feet_contact_time: ", self.feet_contact_time[0])
-        self.feet_contact_time += self.dt * contact
-        self.feet_contact_time *= contact  # 如果当前帧没接触地面，则归零
+        with torch.no_grad():
+            # 获取足部接触信息
+            # contact = self.sensor_forces[:, :, 2] > 1.0  
+            contact = self.contact_forces[:, self.feet_indices, 2] > 1.2
+            # self.contact_filt = torch.logical_or(contact, self.last_contacts)
+            self.contact_filt = torch.logical_or(contact, self.antidragging_last_contacts)
+            # self.last_contacts = contact
+            self.antidragging_last_contacts = contact
+            # 更新足部触地时间
+            # print("feet_contact_time: ", self.feet_contact_time[0])
+            self.feet_contact_time += self.dt * contact
+            self.feet_contact_time *= contact  # 如果当前帧没接触地面，则归零
 
-        # 设定触地时间阈值
-        contact_time_threshold = 1.3  # 设置最大触地时间（秒）
-        # penalty_factor = 10.0  # 设定惩罚系数
+            # 设定触地时间阈值
+            contact_time_threshold = 1.3  # 设置最大触地时间（秒）
+            # penalty_factor = 10.0  # 设定惩罚系数
 
-        if torch.max(self.feet_contact_time) > contact_time_threshold:
-        # 计算惩罚项（超过阈值的部分进行惩罚）
-            penalty = torch.sum((self.feet_contact_time - contact_time_threshold).clamp(min=0), dim=1)
-        else:
-            penalty = 0
-        # print("penalty: ", penalty)
-        # 让静止机器人不受影响
-        penalty *= torch.norm(self.commands[:, :2], dim=1) > 0.01  
-
+            if torch.max(self.feet_contact_time) > contact_time_threshold:
+            # 计算惩罚项（超过阈值的部分进行惩罚）
+                penalty = torch.sum((self.feet_contact_time - contact_time_threshold).clamp(min=0), dim=1)
+            else:
+                penalty = 0
+            # print("penalty: ", penalty)
+            # 让静止机器人不受影响
+            penalty *= torch.norm(self.commands[:, :2], dim=1) > 0.01  
+            del contact
         return penalty  # 负奖励，越大越糟糕
-    
-    def _reward_hip_phase(self):
-        # 关节分组定义
-        # group0_indices = [0, 2, 4]  # 第一组髋关节
-        # group1_indices = [1, 3, 5]  # 第二组髋关节
-        group0_indices = self.hip_indices[[0, 2, 4]].tolist()
-        group1_indices = self.hip_indices[[1, 3, 5]].tolist()
-        window_size = 10  # 分析窗口大小（需大于步态周期/Δt）
-        
-        # 初始化历史记录缓冲区
-        if not hasattr(self, 'angle_history_buffer'):
-            self.angle_history_buffer = torch.zeros(
-                (self.num_envs, window_size, len(group0_indices)+len(group1_indices)),
-                device=self.device
-            )
-        
-        # 更新历史数据 ------------------------------------------------------
-        # 滚动更新：移除最旧数据，添加最新关节角度
-        self.angle_history_buffer = torch.roll(self.angle_history_buffer, shifts=-1, dims=1)
-        current_angles = self.dof_pos[:, group0_indices + group1_indices]
-        self.angle_history_buffer[:, -1] = current_angles
-        # 组内同步性计算 ----------------------------------------------------
-        def compute_group_sync(angles_group):
-            """
-            angles_group: [num_envs, window_size, num_joints]
-            返回: [num_envs] 同步性得分 (0-1)
-            """
-            # FFT分析
-            fft = torch.fft.rfft(angles_group, dim=1)  # [env, freq, joint]
-            
-            # 寻找主频（排除直流分量）
-            magnitudes = torch.abs(fft[:, 1:, :])  # 忽略0频率
-            dominant_freq_idx = torch.argmax(magnitudes, dim=1)  # [env, joint]
-            
-            # 提取主频相位
-            phases = []
-            for j in range(angles_group.shape[-1]):
-                phases.append(
-                    torch.angle(fft[
-                        torch.arange(self.num_envs), 
-                        dominant_freq_idx[:, j], 
-                        j
-                    ])
-                )
-            phase_matrix = torch.stack(phases, dim=1)  # [env, joint]
-            
-            # 计算所有关节对的相位差
-            phase_diffs = []
-            for i in range(phase_matrix.shape[1]):
-                for j in range(i+1, phase_matrix.shape[1]):
-                    diff = (phase_matrix[:,i] - phase_matrix[:,j]) % (2 * torch.pi)
-                    phase_diffs.append(torch.minimum(diff, 2*torch.pi - diff))
-            phase_diffs = torch.stack(phase_diffs, dim=1)
-            
-            # 同步性得分（平均相位差越小得分越高）
-            sync_score = 1 - torch.mean(phase_diffs / torch.pi, dim=1)
-            return sync_score
-        
-        # 分组计算
-        group0_sync = compute_group_sync(self.angle_history_buffer[:, :, :3])
-        group1_sync = compute_group_sync(self.angle_history_buffer[:, :, 3:6])
-        
-        # 组间相位差计算 ----------------------------------------------------
-        def compute_inter_phase_diff(fft_group0, fft_group1):
-            # 取每组的主频相位均值
-            phase_group0 = torch.angle(torch.mean(fft_group0, dim=(1,2)))
-            phase_group1 = torch.angle(torch.mean(fft_group1, dim=(1,2)))
-            
-            # 计算标准化相位差
-            phase_diff = (phase_group0 - phase_group1) % (2 * torch.pi)
-            phase_diff = torch.minimum(phase_diff, 2*torch.pi - phase_diff)
-            return phase_diff / torch.pi  # 映射到[0,1]
-        
-        fft_group0 = torch.fft.rfft(self.angle_history_buffer[:, :, :3], dim=1)
-        fft_group1 = torch.fft.rfft(self.angle_history_buffer[:, :, 3:6], dim=1)
-        inter_phase = compute_inter_phase_diff(fft_group0, fft_group1)
-        inter_score = torch.cos(inter_phase * torch.pi)  # π相位差时得1，同相得-1
-        
-        # 奖励综合 ---------------------------------------------------------
-        intra_reward = (group0_sync + group1_sync) / 2
-        inter_reward = (inter_score + 1) / 2  # 映射到[0,1]
-        
-        total_reward = 0.6 * inter_reward + 0.4 * intra_reward
-        return total_reward
 
     def _reward_stand_still(self):
         # Penalize motion at zero commands

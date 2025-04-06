@@ -69,10 +69,10 @@ def train(args):
     wandb.save(GYM_ENVS_DIR + "/hexapodMBRL.py", policy="now")
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
 
-    train_cfg.runner.run_name = 'Hexapod_terrain_055speed' #'Hexapod_terrain_with_measureheight_nonmeanvel'
+    train_cfg.runner.run_name = 'Hexapod_terrain_055speed_ft' #'Hexapod_terrain_with_measureheight_nonmeanvel'
 
     train_cfg.runner.max_iterations = 100000
-    train_cfg.runner.save_interval = 500
+    train_cfg.runner.save_interval = 100
 
     env, env_cfg = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     ppo_runner, train_cfg = task_registry.make_wmp_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)

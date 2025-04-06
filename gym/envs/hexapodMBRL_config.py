@@ -40,12 +40,12 @@ from gym.envs.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class MBRLHexapodCfg(LeggedRobotCfg):
     class env(LeggedRobotCfg.env):
-        num_envs = 4096
+        num_envs = 4096#
         include_history_steps = None  # Number of steps of history to include.
         prop_dim = 18 + 18 + 3 + 3 + 3 # 45 # proprioception / dof_pod dof_vel base_ag_vel projected_gravity commands
         action_dim = 18
-        privileged_dim = 3 + 1 + 1 + 1 + 3 + 36 + 18 #+ 12 # 63 + 12 # base_lin_vel rand_friction rand_restitution rand_base_mass rand_com_pos rand_gains contact_force  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
-        forward_height_dim = 525 # for depth image prediction
+        privileged_dim = 3 + 1 + 1 + 1 + 3 + 36 + 18 + 6#+ 12 # 63 + 12 # base_lin_vel rand_friction rand_restitution rand_base_mass rand_com_pos rand_gains contact_force  # privileged_obs[:,:privileged_dim] is the privileged information in privileged_obs, include 3-dim base linear vel
+        forward_height_dim = 63 #121 #525 # for depth image prediction
         if not LeggedRobotCfg.terrain.is_plane:
             height_dim = 108 #273  # privileged_obs[:,-height_dim:] is the heightmap in privileged_obs
         if LeggedRobotCfg.terrain.is_plane:
@@ -82,11 +82,13 @@ class MBRLHexapodCfg(LeggedRobotCfg):
         measured_points_x = [-0.2, -0.15, -0.1, -0.05, 0, 0.05, 0.1, 0.15, 0.2] # 1mx1.6m rectangle (without center line) # 9 13 
         measured_points_y = [-0.35, -0.3, -0.25, -0.2, -0.15, -0.1, -0.05, 0, 0.05, 0.1, 0.15, 0.2] # 12 21 
         # 525 dim, for depth image prediction
-        measured_forward_points_x = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-                                     1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9,
-                                     2.0]  # 1mx1.6m rectangle (without center line)
-        measured_forward_points_y = [-1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.,
-                                     0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
+        # measured_forward_points_x = [-1.2, -1.1, -1.0, -0.9, -0.8, -0.7, -0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.,
+        #                              0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2]
+        # measured_forward_points_y = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+        #                              1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9,
+        #                              2.0]  # 1mx1.6m rectangle (without center line)
+        measured_forward_points_x = [-0.4, -0.3, -0.2, -0.1, 0., 0.1, 0.2, 0.3, 0.4] # 9 # 11
+        measured_forward_points_y = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6] #7 # 11
 
 
         selected = False#False  # select a unique terrain type and pass all arguments
@@ -96,7 +98,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
         terrain_length = 4.
         terrain_width = 4.
         num_rows = 5  # number of terrain rows (levels)
-        num_cols = 4  # number of terrain cols (types)
+        num_cols = 5  # number of terrain cols (types)
         # terrain types: [wave, rough slope, stairs up, stairs down, discrete, gap, pit, tilt, crawl, rough_flat]
         # terrain_proportions = [0.0, 0.05, 0.15, 0.15, 0.0, 0.25, 0.25, 0.05, 0.05, 0.05]
         terrain_proportions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -160,7 +162,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
 
 
     class depth:
-        use_camera = False
+        use_camera = False#True
         camera_num_envs = 4096# 1024
         camera_terrain_num_rows = 10
         camera_terrain_num_cols = 20
@@ -170,7 +172,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
         z_angle = [0, 0]
         x_angle = [0, 0]
 
-        update_interval = 5  # 5 works without retraining, 8 worse
+        update_interval = 10#5  # 5 works without retraining, 8 worse
 
         original = (64, 64)
         resized = (64, 64)
@@ -178,7 +180,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
         buffer_len = 2
 
         near_clip = 0
-        far_clip = 2
+        far_clip = 0.5
         dis_noise = 0.0
 
         scale = 1
@@ -188,7 +190,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
         file = "{GYM_ROOT_DIR}/gym/assets/urdf/neuroant.urdf"
         foot_name = "foot_tip"
         hip_name = "bc"
-        penalize_contacts_on = [] # ["thigh", "calf"]
+        penalize_contacts_on = ["ft"] # ["thigh", "calf"]
         # penalize_contacts_on = ["l1_bc", "l1_cf", "l2_bc", "l2_cf", "l3_bc", "l3_cf", "r1_bc", "r1_cf", "r2_bc", "r2_cf", "r3_bc", "r3_cf"]
         # terminate_after_contacts_on = [
         #     "base", "FL_calf", "FR_calf", "RL_calf", "RR_calf",
@@ -276,6 +278,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             ang_vel_xy = -0.75#-0.25
             torques = -0.0001#0.0001
             dof_acc = -2.5e-7
+            dof_vel = -5.0e-4
             base_height = -5.0 #-5.0#-7.5
             feet_air_time = 1.0 # 4.0
             no_feet_air_time = -1.0
@@ -284,7 +287,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             anti_dragging = -0.5#-0.5
             collision = -1.0
             feet_stumble = -7.5#5.0#-1.0
-            action_rate = -0.01#-0.03
+            action_rate = -0.03#-0.03
             clearance = 7.5#5.0#-3.0
             smoothness = -0.01#-0.01
             # feet_edge = -1.0
@@ -302,7 +305,10 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             
             hip_phase = 0
             
-            x_offset_penalty = -0.0
+            x_offset_penalty = -1.0
+            smooth_velocity = -1.0#-5
+            continuous_movement = -5.0#-5
+            ang_xy = -1.0
 
     class commands:
         curriculum = False
@@ -387,7 +393,7 @@ class MBRLHexapodCfgPPO(LeggedRobotCfgPPO):
         buffer_len = MBRLHexapodCfg.depth.buffer_len
         hidden_dims = 512
         learning_rate = 1.e-3
-        num_steps_per_env = MBRLHexapodCfg.depth.update_interval * 24
+        num_steps_per_env = MBRLHexapodCfg.depth.update_interval * 24 #24是什么？
 
     # class estimator:
     #     train_with_estimated_states = True

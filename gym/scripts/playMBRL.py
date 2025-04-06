@@ -119,7 +119,7 @@ def play(args):
     obs = env.get_observations()
     # load policy
     train_cfg.runner.resume = True
-    train_cfg.runner.load_run = 'Hexapod_terrain_055speed'#'Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel' #'Hexapod_terrain_with_measureheight_nonmeanvel'#'Hexapod_plane_randvel'
+    train_cfg.runner.load_run = 'Hexapod_terrain_055speed_ft'#'Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel' #'Hexapod_terrain_with_measureheight_nonmeanvel'#'Hexapod_plane_randvel'
 
     train_cfg.runner.checkpoint = -1
     ppo_runner, train_cfg = task_registry.make_wmp_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)
@@ -167,7 +167,7 @@ def play(args):
 
     total_reward = 0
     not_dones = torch.ones((env.num_envs,), device=env.device)
-    for i in range(10*int(env.max_episode_length) + 3):
+    for i in range(1*int(env.max_episode_length) + 3):
         if (env.global_counter % wm_update_interval == 0):
             if (env.cfg.depth.use_camera):
                 # print("wm_obs shape: ", wm_obs["image"][env.depth_index].shape)

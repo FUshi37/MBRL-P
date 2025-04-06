@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from dreamer import tools
 
 class DepthPredictor(nn.Module):
-    def __init__(self, forward_heightamp_dim = 525,
+    def __init__(self, forward_heightamp_dim = 63, #121,#525,
                  prop_dim = 45,
                  depth_image_dims = [64, 64],
                  encoder_hidden_dims=[256, 128],
