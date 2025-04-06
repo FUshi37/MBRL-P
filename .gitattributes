@@ -3,3 +3,6 @@ logs/hexapod_example/Hexapod_terrain_with_measureheight_02_clearance_nobaseheigh
 logs/hexapod_example/Hexapod_terrain_055speed/model_20000.pt filter=lfs diff=lfs merge=lfs -text
 logs/hexapod_example/Hexapod_terrain_055speed/model_35000.pt filter=lfs diff=lfs merge=lfs -text
 logs/hexapod_example/Hexapod_terrain_055speed/model_39000.pt filter=lfs diff=lfs merge=lfs -text
+logs/hexapod_example/Hexapod_terrain_055speed_ft/model_26000.pt filter=lfs diff=lfs merge=lfs -text
+logs/hexapod_example/Hexapod_terrain_055speed_ft/model_20000.pt filter=lfs diff=lfs merge=lfs -text
+logs/hexapod_example/Hexapod_terrain_055speed_ft/model_34000.pt filter=lfs diff=lfs merge=lfs -text
