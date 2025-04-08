@@ -40,7 +40,7 @@ from gym.envs.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class MBRLHexapodCfg(LeggedRobotCfg):
     class env(LeggedRobotCfg.env):
-        num_envs = 4096#
+        num_envs = 512#
         include_history_steps = None  # Number of steps of history to include.
         prop_dim = 18 + 18 + 3 + 3 + 3 # 45 # proprioception / dof_pod dof_vel base_ag_vel projected_gravity commands
         action_dim = 18
@@ -162,8 +162,8 @@ class MBRLHexapodCfg(LeggedRobotCfg):
 
 
     class depth:
-        use_camera = False#True
-        camera_num_envs = 4096# 1024
+        use_camera = True#True
+        camera_num_envs = 512# 1024
         camera_terrain_num_rows = 10
         camera_terrain_num_cols = 20
 
@@ -275,7 +275,7 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             tracking_lin_vel_x = 2.0
             tracking_lin_vel_y = 8.0
             tracking_ang_vel = 5.0#2.0
-            ang_vel_xy = -0.75#-0.25
+            ang_vel_xy = -10.#-0.75#-0.25
             torques = -0.0001#0.0001
             dof_acc = -2.5e-7
             dof_vel = -5.0e-4
@@ -293,14 +293,14 @@ class MBRLHexapodCfg(LeggedRobotCfg):
             # feet_edge = -1.0
             dof_error = 0#-0.04
             negative_vel_y = -20.0
-            lin_vel_z = -1.0
+            lin_vel_z = -20.0#-1.0
             cheat = -1.#-1
             stuck = -1
             
             foot_slippery = -0.3#-0.1
             
             dof_pos_limits = -1.0
-            dof_vel_limits = -5.0
+            dof_vel_limits = -10.0#-5.0
             torque_limits = -5.0
             
             hip_phase = 0
@@ -327,12 +327,12 @@ class MBRLHexapodCfg(LeggedRobotCfg):
 
         class ranges:
             lin_vel_x = [0.0, 0.0]  # min max [m/s]
-            lin_vel_y = [0.055, 0.055]  # min max [m/s]
+            lin_vel_y = [0.065, 0.065]  # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             heading = [-0., 0.]
 
             flat_lin_vel_x = [-0.0, 0.0]  # min max [m/s]
-            flat_lin_vel_y = [0.055, 0.055]  # min max [m/s]
+            flat_lin_vel_y = [0.065, 0.065]  # min max [m/s]
             flat_ang_vel_yaw = [-1.0, 1.0]  # min max [rad/s]
             flat_heading = [-3.14 / 4, 3.14 / 4]
 
@@ -378,6 +378,9 @@ class MBRLHexapodCfgPPO(LeggedRobotCfgPPO):
         amp_discr_hidden_dims = [1024, 512]
 
         min_normalized_std = [0.05, 0.02, 0.05] * 6
+        
+        resume = True
+        resume_path = "{GYM_ROOT_DIR}/logs/hexapod_example/Hexapod_terrain_055speed_ft/model_34000.pt"
 
     class depth_predictor:
         lr = 3e-4

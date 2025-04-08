@@ -110,7 +110,7 @@ def play(args):
     env_cfg.commands.ranges.flat_lin_vel_y = [0.075, 0.075]
     env_cfg.commands.ranges.flat_ang_vel_yaw = [0.0, 0.0]
 
-    env_cfg.depth.use_camera = False#True
+    env_cfg.depth.use_camera = True#True
 
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -119,7 +119,7 @@ def play(args):
     obs = env.get_observations()
     # load policy
     train_cfg.runner.resume = True
-    train_cfg.runner.load_run = 'Hexapod_terrain_055speed_ft'#'Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel' #'Hexapod_terrain_with_measureheight_nonmeanvel'#'Hexapod_plane_randvel'
+    train_cfg.runner.load_run = 'Hexapod_terrain_055speed_ft_camera'#'Hexapod_terrain_with_measureheight_02_clearance_nobaseheight_minfat_nevel' #'Hexapod_terrain_with_measureheight_nonmeanvel'#'Hexapod_plane_randvel'
 
     train_cfg.runner.checkpoint = -1
     ppo_runner, train_cfg = task_registry.make_wmp_runner(env=env, name=args.task, args=args, train_cfg=train_cfg)

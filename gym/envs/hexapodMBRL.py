@@ -1866,10 +1866,12 @@ class HexapodRobot(BaseTask):
         # Penalize dof velocities too close to the limit
         # clip to max error = 1 rad/s per joint to avoid huge penalties
         # print("dof_vel: ", torch.max(self.dof_vel[0]))
+        # print("max dof vel: ", torch.max(self.dof_vel[0]))
         return torch.sum((torch.abs(self.dof_vel) - self.dof_vel_limits*self.cfg.rewards.soft_dof_vel_limit).clip(min=0., max=1.), dim=1)
 
     def _reward_torque_limits(self):
         # penalize torques too close to the limit
+        # print("max torques: ", torch.max(self.torques[0]))
         return torch.sum((torch.abs(self.torques) - self.torque_limits*self.cfg.rewards.soft_torque_limit).clip(min=0.), dim=1)
 
     def _reward_tracking_lin_vel(self):

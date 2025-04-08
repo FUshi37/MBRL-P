@@ -106,8 +106,10 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
         runs = os.listdir(root)
         #TODO sort by date to handle change of month
         runs.sort()
+        # print("runs: ", runs)
         if 'exported' in runs: runs.remove('exported')
-        last_run = os.path.join(root, runs[-1])
+        # last_run = os.path.join(root, runs[-1])
+        last_run = os.path.join(root, runs[4])
     except:
         raise ValueError("No runs in this directory: " + root)
     if load_run==-1:
@@ -129,7 +131,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
     #             if name[:6] == model_name_cand:
     #                 root = os.path.join(model_parent, name)
     # # TS
-    checkpoint = 26000 #6000
+    checkpoint = 15000 #6000
     if checkpoint==-1:
         models = [file for file in os.listdir(load_run) if model_name_include in file]
         # print("root: ", root)

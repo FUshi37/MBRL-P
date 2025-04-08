@@ -98,7 +98,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="l1_cf">
@@ -155,7 +155,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="l1_ft">
@@ -212,7 +212,7 @@
       lower="0.000"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
 <!-- 2. 新建足端link -->
 <link name="l1_foot_tip">
@@ -302,7 +302,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="l2_cf">
@@ -360,7 +360,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="l2_ft">
@@ -417,7 +417,7 @@
       lower="0.000"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
 <!-- 2. 新建足端link -->
 <link name="l2_foot_tip">
@@ -507,7 +507,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="l3_cf">
@@ -565,7 +565,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="l3_ft">
@@ -622,7 +622,7 @@
       lower="0.000"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
 <!-- 2. 新建足端link -->
 <link name="l3_foot_tip">
@@ -712,7 +712,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="r1_cf">
@@ -770,7 +770,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="r1_ft">
@@ -827,7 +827,7 @@
       lower="-0.7854"
       upper="0"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
 <!-- 2. 新建足端link -->
 <link name="r1_foot_tip">
@@ -917,7 +917,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="r2_cf">
@@ -975,7 +975,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="r2_ft">
@@ -1032,7 +1032,7 @@
       lower="-0.7854"
       upper="0"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
 <!-- 2. 新建足端link -->
 <link name="r2_foot_tip">
@@ -1122,7 +1122,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="r3_cf">
@@ -1180,7 +1180,7 @@
       lower="-0.7854"
       upper="0.7854"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
   <link
     name="r3_ft">
@@ -1237,7 +1237,7 @@
       lower="-0.7854"
       upper="0"
       effort="20"
-      velocity="13.0" />
+      velocity="10.0" />
   </joint>
 <!-- 2. 新建足端link -->
 <link name="r3_foot_tip">

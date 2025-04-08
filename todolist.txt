@@ -133,8 +133,7 @@ base height 和 measure_heights
 82. 视觉far_clip从2改到0.5。 修改measure_height_forward的范围。 depth.update_interval改成10，增大了5倍。
 
 83. 改回没有视觉，碰撞惩罚加ft
-
-55th bule-green
+55th bule-green terrain_levels=3 'Hexapod_terrain_055speed_ft'
 
 84. 足端腾空时y负方向速度惩罚。 改大z_lin_vel惩罚和ang_vel_xy惩罚。
 85. 视觉砍半
